@@ -432,9 +432,9 @@ final class TransferPanelStore: ObservableObject {
 
     /// Wired by `RemoteSessionModel`; all three funnel into the bridge's single
     /// `file_browser` entry point.
-    var requestList: (((TransferListResult) -> Void) -> Void)?
-    var requestControl: ((TransferControlAction, Int, (TransferControlResult) -> Void) -> Void)?
-    var requestSettings: ((TransferSettingsPatch?, (TransferSettingsResult) -> Void) -> Void)?
+    var requestList: ((@escaping (TransferListResult) -> Void) -> Void)?
+    var requestControl: ((TransferControlAction, Int, @escaping (TransferControlResult) -> Void) -> Void)?
+    var requestSettings: ((TransferSettingsPatch?, @escaping (TransferSettingsResult) -> Void) -> Void)?
 
     private var timer: Timer?
     /// Bumped on activate/deactivate; a reply from a dismissed panel is dropped.
