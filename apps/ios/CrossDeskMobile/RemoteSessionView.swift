@@ -62,6 +62,7 @@ struct RemoteSessionView: View {
     @State private var showingPhotoGallery = false
     @State private var showingReceivedFiles = false
     @State private var showingTransferPanel = false
+    @State private var showingRemoteFiles = false
     @State private var statusOrbCenter: CGPoint?
     @GestureState private var statusOrbDragTranslation = CGSize.zero
 
@@ -276,6 +277,10 @@ struct RemoteSessionView: View {
                 keyboardInputVisible = false
                 shortcutManagerVisible = false
                 showingTransferPanel = false
+                showingRemoteFiles = false
+                // The remembered per-op `unsupported` verdicts belong to the
+                // connection that answered them, not to the app.
+                session.remoteFiles.endSession()
             }
         }
         .onValueChange(of: session.remoteCursorPositionRevision) { _ in
@@ -416,6 +421,10 @@ struct RemoteSessionView: View {
                 TransferPanelView(store: session.transferPanel,
                                   peerName: session.transferPeerName)
             }
+            .sheet(isPresented: $showingRemoteFiles) {
+                RemoteFilesView(store: session.remoteFiles,
+                                peerName: session.transferPeerName)
+            }
     }
 
     private var floatingStatusControls: some View {
@@ -484,6 +493,11 @@ struct RemoteSessionView: View {
                                 statusMenuVisible = false
                                 keyboardInputVisible = false
                                 showingTransferPanel = true
+                            },
+                            showRemoteFiles: {
+                                statusMenuVisible = false
+                                keyboardInputVisible = false
+                                showingRemoteFiles = true
                             },
                             close: {
                                 withAnimation(.easeOut(duration: 0.14)) {
@@ -1183,6 +1197,7 @@ private struct FloatingSessionMenu: View {
     let showPhotoAlbum: () -> Void
     let showReceivedFiles: () -> Void
     let showTransferPanel: () -> Void
+    let showRemoteFiles: () -> Void
     let close: () -> Void
     let disconnect: () -> Void
 
@@ -1201,6 +1216,7 @@ private struct FloatingSessionMenu: View {
          showPhotoAlbum: @escaping () -> Void,
          showReceivedFiles: @escaping () -> Void,
          showTransferPanel: @escaping () -> Void,
+         showRemoteFiles: @escaping () -> Void,
          close: @escaping () -> Void,
          disconnect: @escaping () -> Void) {
         self.session = session
@@ -1213,6 +1229,7 @@ private struct FloatingSessionMenu: View {
         self.showPhotoAlbum = showPhotoAlbum
         self.showReceivedFiles = showReceivedFiles
         self.showTransferPanel = showTransferPanel
+        self.showRemoteFiles = showRemoteFiles
         self.close = close
         self.disconnect = disconnect
         // Render the first frame with real values instead of replacing empty
@@ -1363,6 +1380,9 @@ private struct FloatingSessionMenu: View {
                     FloatingControlButton(title: NSLocalizedString("传输", comment: ""),
                                           symbol: "arrow.up.arrow.down.circle",
                                           action: showTransferPanel)
+                    FloatingControlButton(title: NSLocalizedString("文件", comment: ""),
+                                          symbol: "folder",
+                                          action: showRemoteFiles)
                     FloatingControlButton(title: NSLocalizedString("网络状态", comment: ""), symbol: "chart.bar.xaxis") {
                         page = .networkStats
                     }
@@ -1725,7 +1745,9 @@ private struct RemoteCursorGlyph: View {
             .accessibilityHidden(true)
     }
 
-    static let size: CGFloat = 26
+    // 26 pt 在手机上像个小方块，老是挡住要看的东西；18 pt 刚好能看清形状，
+    // 又不会盖住指针底下的内容。热点换算跟着 size 走，不用另调。
+    static let size: CGFloat = 18
 
     static func assetName(for shape: Int) -> String {
         switch shape {
@@ -1747,8 +1769,8 @@ private struct RemoteCursorGlyph: View {
     }
 
     static func hotspotOffset(for shape: Int) -> CGPoint {
-        // The art is a 64 px tile whose hotspot sits at (4, 4); scaled to the
-        // 26 pt glyph that is ~1.6 pt, so the tip lands under the finger.
+        // The art is a 64 px tile whose hotspot sits at (4, 4); scaling by the
+        // glyph size keeps the tip under the finger at any size.
         _ = shape
         return CGPoint(x: size / 2 - 0.5, y: size / 2 - 0.5)
     }
