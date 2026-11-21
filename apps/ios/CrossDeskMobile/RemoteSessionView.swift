@@ -1745,9 +1745,11 @@ private struct RemoteCursorGlyph: View {
             .accessibilityHidden(true)
     }
 
-    // 26 pt 在手机上像个小方块，老是挡住要看的东西；18 pt 刚好能看清形状，
-    // 又不会盖住指针底下的内容。热点换算跟着 size 走，不用另调。
-    static let size: CGFloat = 18
+    // 素材是 UU 自己的 64×64 光标图，实测箭头只占 tile 高度的 88%（整套平均
+    // 79.5%）。18 pt 等于把箭头画成 15.8 pt ≈ 47 设备像素，是桌面指针的近两倍，
+    // 所以屏幕上显得又大又挡。按「箭头约 24 设备像素」反推，tile 应画在 10.1 pt，
+    // 取 11 pt 留一点触摸可见性：箭头约 9.7 pt / 29 设备像素。
+    static let size: CGFloat = 11
 
     static func assetName(for shape: Int) -> String {
         switch shape {
