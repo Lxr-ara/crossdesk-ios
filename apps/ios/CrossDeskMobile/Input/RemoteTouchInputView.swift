@@ -147,7 +147,9 @@ final class RemoteTouchSurface: UIView, UIGestureRecognizerDelegate {
     private var edgePanned = false
     private var needsViewportRestore = true
     private var pinchActive = false
-    private var viewportPanActive = false
+    // 这两个手势共享两根手指：谁先「表态」谁赢，避免滚一半突然放大。
+    private var pinchCommitted = false
+    private var wheelScrolled = false
     private let relativePointerSpeed: CGFloat = 1.35
     private let maximumViewportScale: CGFloat = 10
     private let minimumVisibleHeightFraction: CGFloat = 0.2
@@ -330,7 +332,14 @@ final class RemoteTouchSurface: UIView, UIGestureRecognizerDelegate {
 
         switch recognizer.state {
         case .began, .changed:
-            guard let point = normalized(recognizer.location(in: self)) else { return }
+            guard let rect = renderRect() else { return }
+            let location = recognizer.location(in: self)
+            // 放大以后想看别处：把指针推到可视区边缘，画面就跟着让路。
+            // 两指已经被滚轮占用，所以平移只能发生在指针顶到边界的时候。
+            if viewportScale > 1.001 {
+                panViewportIfPointerBeyondEdge(location, rect: rect)
+            }
+            guard let point = normalized(clamping(location, into: rect)) else { return }
             onMove?(point.0, point.1)
         default:
             break
@@ -380,6 +389,12 @@ final class RemoteTouchSurface: UIView, UIGestureRecognizerDelegate {
             recognizer.scale = 1
         case .changed:
             guard pinchActive else { return }
+            // 4% 的跨度变化才算真的捏合：两指平行滑动时的那点抖动不该改变缩放。
+            if !pinchCommitted {
+                // 已经滚过就不许再放大；没滚过则要 4% 的跨度变化才认。
+                guard !wheelScrolled, abs(recognizer.scale - 1) >= 0.04 else { return }
+                pinchCommitted = true
+            }
             let oldScale = viewportScale
             let newScale = min(max(oldScale * recognizer.scale, 1),
                                maximumViewportScale)
@@ -409,6 +424,7 @@ final class RemoteTouchSurface: UIView, UIGestureRecognizerDelegate {
             publishViewport()
         case .ended, .cancelled, .failed:
             pinchActive = false
+            resetTwoFingerGestureState()
             if viewportScale <= 1.001 {
                 viewportScale = 1
                 viewportOffset = .zero
@@ -421,42 +437,18 @@ final class RemoteTouchSurface: UIView, UIGestureRecognizerDelegate {
     }
 
     @objc private func handleWheel(_ recognizer: UIPanGestureRecognizer) {
-        guard mouseInput?.hasVirtualButton != true else { viewportPanActive = false; return }
-        if viewportScale > 1.001 || pinchActive {
-            switch recognizer.state {
-            case .began:
-                viewportPanActive = pinchActive || renderRect()?.contains(
-                    recognizer.location(in: self)
-                ) == true
-                recognizer.setTranslation(.zero, in: self)
-            case .changed:
-                if !viewportPanActive {
-                    viewportPanActive = pinchActive || renderRect()?.contains(
-                        recognizer.location(in: self)
-                    ) == true
-                }
-                guard viewportPanActive else { return }
-                let translation = recognizer.translation(in: self)
-                recognizer.setTranslation(.zero, in: self)
-                let proposedOffset = CGSize(
-                    width: viewportOffset.width + translation.x,
-                    height: viewportOffset.height + translation.y
-                )
-                viewportOffset = constrainedViewportOffset(proposedOffset,
-                                                           scale: viewportScale)
-                publishViewport()
-            default:
-                viewportPanActive = false
-            }
-            return
-        }
-
+        // 两指永远是滚轮，一次也不平移画面：放大之后还用两指拖屏，会和
+        // 「两指滚轮」抢同一个手势，手感就是「滑一下整块画面跟着动」。
+        guard mouseInput?.hasVirtualButton != true else { return }
+        if pinchCommitted { return }
         guard let point = pointerPoint(for: recognizer.location(in: self)) else { return }
         let translation = recognizer.translation(in: self)
+        // 12 pt 一格，和桌面滚轮一致：手指移动得越少，主机滚得越准。
         let deltaX = Int(-translation.x / 12)
         let deltaY = Int(-translation.y / 12)
         if deltaX != 0 || deltaY != 0 {
             onScroll?(point.0, point.1, deltaX, deltaY)
+            wheelScrolled = true
             recognizer.setTranslation(.zero, in: self)
         }
     }
@@ -538,6 +530,38 @@ final class RemoteTouchSurface: UIView, UIGestureRecognizerDelegate {
         default:
             break
         }
+    }
+
+    private func clamping(_ point: CGPoint, into rect: CGRect) -> CGPoint {
+        // Inside the picture the location passes through untouched; outside it is
+        // pinned to the nearest edge so the pointer never leaves the surface.
+        CGPoint(x: min(max(point.x, rect.minX), rect.maxX - 0.5),
+                y: min(max(point.y, rect.minY), rect.maxY - 0.5))
+    }
+
+    private func panViewportIfPointerBeyondEdge(_ location: CGPoint, rect: CGRect) {
+        let visible = rect.intersection(bounds)
+        guard !visible.isNull, !visible.isEmpty else { return }
+        let margin: CGFloat = 2
+        var dx: CGFloat = 0
+        var dy: CGFloat = 0
+        if location.x < visible.minX + margin { dx = visible.minX + margin - location.x }
+        else if location.x > visible.maxX - margin { dx = visible.maxX - margin - location.x }
+        if location.y < visible.minY + margin { dy = visible.minY + margin - location.y }
+        else if location.y > visible.maxY - margin { dy = visible.maxY - margin - location.y }
+        guard dx != 0 || dy != 0 else { return }
+        let proposed = CGSize(width: viewportOffset.width - dx,
+                              height: viewportOffset.height - dy)
+        let constrained = constrainedViewportOffset(proposed, scale: viewportScale)
+        guard constrained != viewportOffset else { return }
+        viewportOffset = constrained
+        edgePanned = true
+        publishViewport()
+    }
+
+    private func resetTwoFingerGestureState() {
+        pinchCommitted = false
+        wheelScrolled = false
     }
 
     private func pointerPoint(for location: CGPoint) -> (Float, Float)? {
