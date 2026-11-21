@@ -1100,7 +1100,6 @@ struct RemoteFilesView: View {
                 }
         }
         .frame(width: 0, height: 0)
-        .allowsHitTesting(false)
     }
 
     // MARK: Actions
