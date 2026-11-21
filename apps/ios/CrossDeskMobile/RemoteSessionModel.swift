@@ -448,6 +448,16 @@ final class RemoteSessionModel: NSObject, ObservableObject, CrossDeskRTCBridgeDe
             guard let self else { return completion(.failure("disconnected")) }
             self.transferSettings(patch: patch, completion: completion)
         }
+        // The remote file browser rides the same control-stream RPC. The op name
+        // and every field are decided by `RemoteFileBrowserStore`; this wiring
+        // only supplies the envelope.
+        remoteFiles.request = { [weak self] op, fields, completion in
+            guard let self else {
+                completion(["ok": false, "error": "disconnected"])
+                return
+            }
+            self.fileRequest(op: op, fields: fields, completion: completion)
+        }
         pictureInPicture.requestFrame = { [weak self] in
             guard let self, self.isConnected else { return }
             self.bridge.requestKeyFrame()
@@ -1202,6 +1212,9 @@ final class RemoteSessionModel: NSObject, ObservableObject, CrossDeskRTCBridgeDe
         // Same stream, disjoint id ranges: the album ignores transfer replies and
         // the transfer panel ignores album replies.
         receiveTransferReply(payload)
+        // File-browser replies live in their own range as well, so the three
+        // consumers never see each other's answers.
+        receiveFileReply(payload)
     }
 
     func rtcBridge(_ bridge: CrossDeskRTCBridge, didReceivePrivacyStatus data: Data) {
@@ -1795,5 +1808,63 @@ final class RemoteSessionModel: NSObject, ObservableObject, CrossDeskRTCBridgeDe
             if !code.isEmpty { return code }
         }
         return nil
+    }
+
+    // MARK: - Remote file browser (file_browser management ops)
+
+    /// Controller-side remote file browser. Same transport as the album and the
+    /// transfer panel: one `file_browser` request path (`sendPhotoMessage`) and
+    /// one reply path (`rtcBridge(_:didReceivePhotoMessage:)`).
+    let remoteFiles = RemoteFileBrowserStore()
+
+    /// A third, disjoint envelope range. The album numbers from 1 and the
+    /// transfer panel from 0x4000_0000 on the same stream, so a shared counter
+    /// would let one component's reply land in another's pending map.
+    private static let fileSequenceBase = 0x5000_0000
+    private var fileSequence = RemoteSessionModel.fileSequenceBase
+    private var fileReplies: [Int: ([String: Any]) -> Void] = [:]
+
+    /// One management op: `{op, <fields>}` inside the shared version 1 envelope.
+    /// The op name and every field come from `RemoteFileBrowserStore`; this
+    /// function only stamps `type`/`version`/`op`/`id` and owns the timeout.
+    @discardableResult
+    func fileRequest(op: String,
+                     fields: [String: Any] = [:],
+                     completion: @escaping ([String: Any]) -> Void) -> Bool {
+        guard hasNetworkConsent, isConnected else {
+            completion(["ok": false, "error": "disconnected"])
+            return false
+        }
+        fileSequence += 1
+        let id = fileSequence
+        var message: [String: Any] = ["type": "file_browser", "version": 1,
+                                      "op": op, "id": id]
+        for (key, value) in fields { message[key] = value }
+        guard JSONSerialization.isValidJSONObject(message),
+              let data = try? JSONSerialization.data(withJSONObject: message) else {
+            completion(["ok": false, "error": "invalid_request"])
+            return false
+        }
+        fileReplies[id] = completion
+        // The album's entry point, unchanged: one request path for `file_browser`.
+        bridge.sendPhotoMessage(data)
+        // A peer that never answers must not pin the browser in "requesting".
+        DispatchQueue.main.asyncAfter(deadline: .now() + 5) { [weak self] in
+            guard let self, let pending = self.fileReplies.removeValue(forKey: id) else { return }
+            pending(["ok": false, "error": "timeout"])
+        }
+        return true
+    }
+
+    /// Replies for the file-browser ops. Unknown ids belong to the album or the
+    /// transfer panel and are left alone; a reply that arrives after the request
+    /// timed out is dropped.
+    private func receiveFileReply(_ payload: Data) {
+        guard !fileReplies.isEmpty,
+              let object = try? JSONSerialization.jsonObject(with: payload) as? [String: Any],
+              object["op"] as? String == "reply",
+              let id = TransferJSON.int(object["id"], in: 1...Int(UInt32.max)),
+              let pending = fileReplies.removeValue(forKey: id) else { return }
+        pending(object)
     }
 }
