@@ -540,6 +540,7 @@
 					"$(PROJECT_DIR)/../../deps/submodules/minirtc/src/api",
 					"$(PROJECT_DIR)/../../libs/wire/include",
 				"$(PROJECT_DIR)/../../libs/controller/include",
+				"$(PROJECT_DIR)/../Vendor",
 				);
 				INFOPLIST_FILE = CrossDeskMobile/Info.plist;
 				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.utilities";
@@ -593,6 +594,7 @@
 					"$(PROJECT_DIR)/../../deps/submodules/minirtc/src/api",
 					"$(PROJECT_DIR)/../../libs/wire/include",
 				"$(PROJECT_DIR)/../../libs/controller/include",
+				"$(PROJECT_DIR)/../Vendor",
 				);
 				INFOPLIST_FILE = CrossDeskMobile/Info.plist;
 				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.utilities";
