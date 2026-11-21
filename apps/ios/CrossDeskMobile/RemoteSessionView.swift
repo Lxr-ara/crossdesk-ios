@@ -61,6 +61,7 @@ struct RemoteSessionView: View {
     @State private var statusMenuVisible = false
     @State private var showingPhotoGallery = false
     @State private var showingReceivedFiles = false
+    @State private var showingTransferPanel = false
     @State private var statusOrbCenter: CGPoint?
     @GestureState private var statusOrbDragTranslation = CGSize.zero
 
@@ -274,6 +275,7 @@ struct RemoteSessionView: View {
                 mouseInput.releaseAll()
                 keyboardInputVisible = false
                 shortcutManagerVisible = false
+                showingTransferPanel = false
             }
         }
         .onValueChange(of: session.remoteCursorPositionRevision) { _ in
@@ -399,8 +401,8 @@ struct RemoteSessionView: View {
         .ignoresSafeArea()
     }
 
-    /// Sheets only: the album and the received-files list are opened from the
-    /// floating menu, so this carrier draws nothing.
+    /// Sheets only: the album, the received-files list and the transfer panel are
+    /// opened from the floating menu, so this carrier draws nothing.
     private var photoGalleryLauncher: some View {
         Color.clear
             .frame(width: 0, height: 0)
@@ -409,6 +411,10 @@ struct RemoteSessionView: View {
             }
             .sheet(isPresented: $showingReceivedFiles) {
                 ReceivedFilesView()
+            }
+            .sheet(isPresented: $showingTransferPanel) {
+                TransferPanelView(store: session.transferPanel,
+                                  peerName: session.transferPeerName)
             }
     }
 
@@ -473,6 +479,11 @@ struct RemoteSessionView: View {
                                 statusMenuVisible = false
                                 keyboardInputVisible = false
                                 showingReceivedFiles = true
+                            },
+                            showTransferPanel: {
+                                statusMenuVisible = false
+                                keyboardInputVisible = false
+                                showingTransferPanel = true
                             },
                             close: {
                                 withAnimation(.easeOut(duration: 0.14)) {
@@ -1171,6 +1182,7 @@ private struct FloatingSessionMenu: View {
     let chooseFile: () -> Void
     let showPhotoAlbum: () -> Void
     let showReceivedFiles: () -> Void
+    let showTransferPanel: () -> Void
     let close: () -> Void
     let disconnect: () -> Void
 
@@ -1188,6 +1200,7 @@ private struct FloatingSessionMenu: View {
          chooseFile: @escaping () -> Void,
          showPhotoAlbum: @escaping () -> Void,
          showReceivedFiles: @escaping () -> Void,
+         showTransferPanel: @escaping () -> Void,
          close: @escaping () -> Void,
          disconnect: @escaping () -> Void) {
         self.session = session
@@ -1199,6 +1212,7 @@ private struct FloatingSessionMenu: View {
         self.chooseFile = chooseFile
         self.showPhotoAlbum = showPhotoAlbum
         self.showReceivedFiles = showReceivedFiles
+        self.showTransferPanel = showTransferPanel
         self.close = close
         self.disconnect = disconnect
         // Render the first frame with real values instead of replacing empty
@@ -1346,6 +1360,9 @@ private struct FloatingSessionMenu: View {
                     FloatingControlButton(title: NSLocalizedString("接收的文件", comment: ""),
                                           symbol: "tray.and.arrow.down",
                                           action: showReceivedFiles)
+                    FloatingControlButton(title: NSLocalizedString("传输", comment: ""),
+                                          symbol: "arrow.up.arrow.down.circle",
+                                          action: showTransferPanel)
                     FloatingControlButton(title: NSLocalizedString("网络状态", comment: ""), symbol: "chart.bar.xaxis") {
                         page = .networkStats
                     }
