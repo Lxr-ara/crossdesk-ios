@@ -433,6 +433,21 @@ final class RemoteSessionModel: NSObject, ObservableObject, CrossDeskRTCBridgeDe
         photoGallery.sendFile = { [weak self] url in
             self?.bridge.sendFile(at: url)
         }
+        // The transfer panel shares the album's control-stream RPC. Each wiring
+        // fails closed: a dismissed or disconnected session answers immediately
+        // instead of leaving the panel in "requesting".
+        transferPanel.requestList = { [weak self] completion in
+            guard let self else { return completion(.failure("disconnected")) }
+            self.transferList(completion: completion)
+        }
+        transferPanel.requestControl = { [weak self] action, fileID, completion in
+            guard let self else { return completion(.failure("disconnected")) }
+            self.transferControl(action: action, fileId: fileID, completion: completion)
+        }
+        transferPanel.requestSettings = { [weak self] patch, completion in
+            guard let self else { return completion(.failure("disconnected")) }
+            self.transferSettings(patch: patch, completion: completion)
+        }
         pictureInPicture.requestFrame = { [weak self] in
             guard let self, self.isConnected else { return }
             self.bridge.requestKeyFrame()
@@ -1184,6 +1199,9 @@ final class RemoteSessionModel: NSObject, ObservableObject, CrossDeskRTCBridgeDe
 
     func rtcBridge(_ bridge: CrossDeskRTCBridge, didReceivePhotoMessage payload: Data) {
         photoGallery.receive(payload)
+        // Same stream, disjoint id ranges: the album ignores transfer replies and
+        // the transfer panel ignores album replies.
+        receiveTransferReply(payload)
     }
 
     func rtcBridge(_ bridge: CrossDeskRTCBridge, didReceivePrivacyStatus data: Data) {
@@ -1637,5 +1655,145 @@ final class RemoteSessionModel: NSObject, ObservableObject, CrossDeskRTCBridgeDe
             return String(format: NSLocalizedString("视频 %1$@×%2$@ · %3$@ 帧", comment: ""), String(describing: Int(frameSize.width)), String(describing: Int(frameSize.height)), String(describing: frameCount))
         }
         return isConnected ? NSLocalizedString("正在取回远程画面…", comment: "") : NSLocalizedString("等待连接", comment: "")
+    }
+
+    // MARK: - L2 transfer panel (file_browser transfer ops)
+
+    /// Controller-side transfer panel. Transport is the same control-stream
+    /// `file_browser` JSON RPC the photo album uses, so the bridge keeps exactly
+    /// one request path (`sendPhotoMessage`) and one reply path
+    /// (`rtcBridge(_:didReceivePhotoMessage:)`).
+    let transferPanel = TransferPanelStore()
+
+    /// Header label for the transfer sheet: the host name once the peer sent
+    /// one, otherwise whichever identifier we connected to.
+    var transferPeerName: String {
+        if !activeDisplayName.isEmpty { return activeDisplayName }
+        return remoteID.isEmpty ? NSLocalizedString("远端设备", comment: "") : remoteID
+    }
+
+    /// Envelope ids for the transfer ops live in their own range: the album store
+    /// numbers from 1 on the same stream, and a shared counter would let one
+    /// component's reply land in the other's pending map.
+    private static let transferSequenceBase = 0x4000_0000
+    private var transferSequence = RemoteSessionModel.transferSequenceBase
+    private var transferReplies: [Int: ([String: Any]) -> Void] = [:]
+
+    /// `{op:"transfer_list"}` — one snapshot of the host's queue.
+    func transferList(completion: @escaping (TransferListResult) -> Void) {
+        sendTransferRequest(op: "transfer_list") { object in
+            completion(RemoteSessionModel.parseTransferList(object))
+        }
+    }
+
+    /// `{op:"transfer_control", action:<verb>, file_id:<row id>}`. `fileId` is
+    /// the row id — never the envelope `id`.
+    func transferControl(action: TransferControlAction, fileId: Int,
+                         completion: @escaping (TransferControlResult) -> Void) {
+        var fields: [String: Any] = ["action": action.rawValue]
+        if action.isItemAction {
+            guard fileId > 0 else {
+                completion(TransferControlResult(action: action, applied: false,
+                                                 error: "invalid_request"))
+                return
+            }
+            fields["file_id"] = fileId
+        }
+        sendTransferRequest(op: "transfer_control", fields: fields) { object in
+            completion(RemoteSessionModel.parseTransferControl(object, action: action))
+        }
+    }
+
+    /// `{op:"transfer_settings"}`. A `nil` or empty patch reads the host's current
+    /// values; the reply always reports the effective ones.
+    func transferSettings(patch: TransferSettingsPatch?,
+                          completion: @escaping (TransferSettingsResult) -> Void) {
+        var fields: [String: Any] = [:]
+        if let patch {
+            if let rate = patch.rateKbps { fields["rate_kbps"] = rate }
+            if let policy = patch.overwritePolicy { fields["overwrite_policy"] = policy }
+            if let concurrency = patch.concurrency { fields["concurrency"] = concurrency }
+        }
+        sendTransferRequest(op: "transfer_settings", fields: fields) { object in
+            completion(RemoteSessionModel.parseTransferSettings(object))
+        }
+    }
+
+    @discardableResult
+    private func sendTransferRequest(op: String,
+                                     fields: [String: Any] = [:],
+                                     completion: @escaping ([String: Any]) -> Void) -> Bool {
+        guard hasNetworkConsent, isConnected else {
+            completion(["ok": false, "error": "disconnected"])
+            return false
+        }
+        transferSequence += 1
+        let id = transferSequence
+        var message: [String: Any] = ["type": "file_browser", "version": 1,
+                                      "op": op, "id": id]
+        for (key, value) in fields { message[key] = value }
+        guard JSONSerialization.isValidJSONObject(message),
+              let data = try? JSONSerialization.data(withJSONObject: message) else {
+            completion(["ok": false, "error": "invalid_request"])
+            return false
+        }
+        transferReplies[id] = completion
+        // The album's entry point, unchanged: one request path for `file_browser`.
+        bridge.sendPhotoMessage(data)
+        // A peer that never answers must not pin the panel in "requesting".
+        DispatchQueue.main.asyncAfter(deadline: .now() + 5) { [weak self] in
+            guard let self, let pending = self.transferReplies.removeValue(forKey: id) else { return }
+            pending(["ok": false, "error": "timeout"])
+        }
+        return true
+    }
+
+    /// Replies for the transfer ops. Unknown ids belong to the album and are left
+    /// alone; a reply that arrives after the request timed out is dropped.
+    private func receiveTransferReply(_ payload: Data) {
+        guard !transferReplies.isEmpty,
+              let object = try? JSONSerialization.jsonObject(with: payload) as? [String: Any],
+              object["op"] as? String == "reply",
+              let id = TransferJSON.int(object["id"], in: 1...Int(UInt32.max)),
+              let pending = transferReplies.removeValue(forKey: id) else { return }
+        pending(object)
+    }
+
+    private static func parseTransferList(_ object: [String: Any]) -> TransferListResult {
+        if let error = transferError(object) { return .failure(error) }
+        var rows: [TransferRow] = []
+        for item in (object["rows"] as? [[String: Any]]) ?? [] {
+            if let row = TransferRow.decode(item) { rows.append(row) }
+        }
+        return TransferListResult(rows: rows,
+                                  summary: TransferSummary.decode(object["summary"]),
+                                  error: nil)
+    }
+
+    private static func parseTransferControl(_ object: [String: Any],
+                                             action: TransferControlAction) -> TransferControlResult {
+        if let error = transferError(object) {
+            return TransferControlResult(action: action, applied: false, error: error)
+        }
+        let applied = TransferJSON.bool(object["applied"]) ?? false
+        return TransferControlResult(action: action, applied: applied, error: nil)
+    }
+
+    private static func parseTransferSettings(_ object: [String: Any]) -> TransferSettingsResult {
+        if let error = transferError(object) { return .failure(error) }
+        return TransferSettingsResult(settings: TransferSettings.decode(object), error: nil)
+    }
+
+    /// Every reply carries `ok`; a refusal carries one vocabulary `error` code.
+    private static func transferError(_ object: [String: Any]) -> String? {
+        if let ok = TransferJSON.bool(object["ok"]), !ok {
+            let code = TransferJSON.string(object["error"])
+            return code.isEmpty ? "unknown" : code
+        }
+        if object["ok"] == nil {
+            let code = TransferJSON.string(object["error"])
+            if !code.isEmpty { return code }
+        }
+        return nil
     }
 }
