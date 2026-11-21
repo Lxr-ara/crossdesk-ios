@@ -58,6 +58,8 @@ struct RemoteSessionView: View {
     @State private var showingFileImporter = false
     @State private var disconnectConfirmationVisible = false
     @State private var cursorPosition: CGPoint?
+    // 光标大小三档，默认 11 pt 是按素材实测反推出来的（箭头 64px 图里的 88%）。
+    @AppStorage("remoteCursorSize") private var cursorSize: Double = 11
     @State private var statusMenuVisible = false
     @State private var showingPhotoGallery = false
     @State private var showingReceivedFiles = false
@@ -92,7 +94,8 @@ struct RemoteSessionView: View {
                                         session.remoteCursorVisualOffset,
                                     contentSize: videoRect.size,
                                     viewportScale: viewport.scale,
-                                    shape: visibleCursorShape
+                                    shape: visibleCursorShape,
+                                    glyphSize: CGFloat(cursorSize)
                                 )
                                 .allowsHitTesting(false)
                             }
@@ -520,6 +523,16 @@ struct RemoteSessionView: View {
                 .frame(width: containerSize.width, height: containerSize.height)
                 .allowsHitTesting(statusMenuVisible)
 
+                if statusMenuVisible {
+                    cursorSizePicker
+                        .padding(.horizontal, 12)
+                        .padding(.vertical, 8)
+                        .background(.ultraThinMaterial,
+                                    in: RoundedRectangle(cornerRadius: 12))
+                        .frame(maxWidth: .infinity, maxHeight: .infinity,
+                               alignment: .bottom)
+                        .padding(.bottom, 84)
+                }
                 photoGalleryLauncher
                 CrossDeskStatusOrb(isExpanded: statusMenuVisible)
                     .frame(width: 54, height: 54)
@@ -666,6 +679,31 @@ struct RemoteSessionView: View {
             y: min(max(point.y, verticalMargin),
                    max(verticalMargin, size.height - verticalMargin))
         )
+    }
+
+    // 三档光标大小：9 / 11 / 14 pt。数值来自光标素材的实测几何（64px tile 里
+    // 箭头占 88%），不是随手取的整数。
+    private var cursorSizePicker: some View {
+        HStack(spacing: 8) {
+            Text("光标大小").font(.caption).foregroundStyle(.secondary)
+            ForEach(CursorSizeStep.allCases) { step in
+                Button {
+                    cursorSize = step.points
+                } label: {
+                    Text(step.title)
+                        .font(.caption)
+                        .padding(.horizontal, 10)
+                        .padding(.vertical, 6)
+                        .background(
+                            RoundedRectangle(cornerRadius: 8)
+                                .fill(abs(cursorSize - step.points) < 0.01
+                                      ? Color.accentColor.opacity(0.22)
+                                      : Color.primary.opacity(0.06))
+                        )
+                }
+                .buttonStyle(.plain)
+            }
+        }
     }
 
     private var visibleCursorShape: Int {
@@ -1706,6 +1744,7 @@ private struct RemoteCursorOverlay: View {
     let contentSize: CGSize
     let viewportScale: CGFloat
     let shape: Int
+    let glyphSize: CGFloat
 
     var body: some View {
         let scale = max(viewportScale, 0.0001)
@@ -1713,10 +1752,10 @@ private struct RemoteCursorOverlay: View {
             contentSize.width
         let y = min(max(normalizedPosition.y + normalizedVisualOffset.y, 0), 1) *
             contentSize.height
-        let offset = RemoteCursorGlyph.hotspotOffset(for: shape)
+        let offset = RemoteCursorGlyph.hotspotOffset(for: shape, size: glyphSize)
 
         ZStack(alignment: .topLeading) {
-            RemoteCursorGlyph(shape: shape)
+            RemoteCursorGlyph(shape: shape, size: glyphSize)
                 // The cursor lives inside the exact same transformed view as
                 // the decoded frame, so its anchor cannot drift from video
                 // because of an independently reconstructed transform. Undo
@@ -1731,8 +1770,28 @@ private struct RemoteCursorOverlay: View {
     }
 }
 
+private enum CursorSizeStep: String, CaseIterable, Identifiable {
+    case small, standard, large
+    var id: String { rawValue }
+    var points: Double {
+        switch self {
+        case .small: return 9
+        case .standard: return 11
+        case .large: return 14
+        }
+    }
+    var title: String {
+        switch self {
+        case .small: return "小"
+        case .standard: return "标准"
+        case .large: return "大"
+        }
+    }
+}
+
 private struct RemoteCursorGlyph: View {
     let shape: Int
+    let size: CGFloat
 
     var body: some View {
         // UU remote cursor art: the desktop controller draws the same assets, so
@@ -1741,15 +1800,14 @@ private struct RemoteCursorGlyph: View {
             .resizable()
             .interpolation(.high)
             .scaledToFit()
-            .frame(width: RemoteCursorGlyph.size, height: RemoteCursorGlyph.size)
+            .frame(width: size, height: size)
             .accessibilityHidden(true)
     }
 
     // 素材是 UU 自己的 64×64 光标图，实测箭头只占 tile 高度的 88%（整套平均
-    // 79.5%）。18 pt 等于把箭头画成 15.8 pt ≈ 47 设备像素，是桌面指针的近两倍，
-    // 所以屏幕上显得又大又挡。按「箭头约 24 设备像素」反推，tile 应画在 10.1 pt，
-    // 取 11 pt 留一点触摸可见性：箭头约 9.7 pt / 29 设备像素。
-    static let size: CGFloat = 11
+    // 79.5%）。按「箭头约 24 设备像素」反推，tile 应画在 10.1 pt；实际档位是
+    // 9 / 11 / 14 pt（见设置里的「光标大小」），默认取中间的 11 pt。
+    static let defaultSize: CGFloat = 11
 
     static func assetName(for shape: Int) -> String {
         switch shape {
@@ -1770,7 +1828,7 @@ private struct RemoteCursorGlyph: View {
         }
     }
 
-    static func hotspotOffset(for shape: Int) -> CGPoint {
+    static func hotspotOffset(for shape: Int, size: CGFloat) -> CGPoint {
         // The art is a 64 px tile whose hotspot sits at (4, 4); scaling by the
         // glyph size keeps the tip under the finger at any size.
         _ = shape
