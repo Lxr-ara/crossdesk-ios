@@ -60,6 +60,9 @@ struct RemoteSessionView: View {
     @State private var cursorPosition: CGPoint?
     // 光标大小三档，默认 11 pt 是按素材实测反推出来的（箭头 64px 图里的 88%）。
     @AppStorage("remoteCursorSize") private var cursorSize: Double = 11
+    // 模拟鼠标（UU 的 analogMouse）：一只可拖动的鼠标面板，按住左键拖动=拖拽，
+    // 中间条=滚轮。默认关闭，避免和老式虚拟鼠标条重复。
+    @AppStorage("analogMouseEnabled") private var analogMouseEnabled = false
     @State private var statusMenuVisible = false
     @State private var showingPhotoGallery = false
     @State private var showingReceivedFiles = false
@@ -533,6 +536,14 @@ struct RemoteSessionView: View {
                                alignment: .bottom)
                         .padding(.bottom, 84)
                 }
+                        if analogMouseEnabled && session.pixelBuffer != nil {
+                            AnalogMousePad(mouseInput: mouseInput,
+                                           viewportSize: videoRect.size)
+                                .frame(width: containerSize.width,
+                                       height: containerSize.height)
+                                .allowsHitTesting(true)
+                        }
+                        analogMouseToggle
                 photoGalleryLauncher
                 CrossDeskStatusOrb(isExpanded: statusMenuVisible)
                     .frame(width: 54, height: 54)
@@ -683,6 +694,25 @@ struct RemoteSessionView: View {
 
     // 三档光标大小：9 / 11 / 14 pt。数值来自光标素材的实测几何（64px tile 里
     // 箭头占 88%），不是随手取的整数。
+    // 左下角的模拟鼠标开关：和 UU 一样，是一眼能看见的常驻控件。
+    private var analogMouseToggle: some View {
+        Button {
+            analogMouseEnabled.toggle()
+            if !analogMouseEnabled { mouseInput.releaseAll() }
+        } label: {
+            Image(systemName: analogMouseEnabled ? "computermouse.fill" : "computermouse")
+                .font(.system(size: 17, weight: .semibold))
+                .foregroundStyle(analogMouseEnabled ? Color.accentColor : Color.primary.opacity(0.7))
+                .frame(width: 44, height: 44)
+                .background(.ultraThinMaterial, in: Circle())
+        }
+        .buttonStyle(.plain)
+        .padding(.leading, 16)
+        .padding(.bottom, 24)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottomLeading)
+        .accessibilityLabel(Text("模拟鼠标"))
+    }
+
     private var cursorSizePicker: some View {
         HStack(spacing: 8) {
             Text("光标大小").font(.caption).foregroundStyle(.secondary)
