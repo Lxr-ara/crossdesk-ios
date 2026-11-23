@@ -1833,40 +1833,12 @@ private struct RemoteCursorGlyph: View {
     // 是「中心」热区。旧实现一律用 tile 中心，等于把视觉指尖错开半个 tile，
     // 点击落点和看到的箭头差了 3~4 pt。
     static func hotspotOffset(for shape: Int, size: CGFloat) -> CGPoint {
-        let unit = size / 64
-        let box = visibleBox(for: shape)
-        let centerAnchored: Set<Int> = [2, 5, 6, 7, 8, 16, 17, 18, 19, 20, 21, 25, 26, 11, 12, 13, 14, 15]
-        let x: CGFloat
-        let y: CGFloat
-        if centerAnchored.contains(shape) {
-            x = box.origin.x + box.width / 2
-            y = box.origin.y + box.height / 2
-        } else {
-            x = box.origin.x
-            y = box.origin.y
-        }
-        return CGPoint(x: x * unit, y: y * unit)
+        // 数值来自 libs/wire/include/remote_cursor_metrics.h（与桌面同一张表），
+        // 由 scripts/generate_cursor_metrics.py 生成，不要在这里写死。
+        CursorMetrics.hotspot(for: shape, tile: size)
     }
 
-    /// Visible bounding box of the glyph inside its 64 px tile (measured).
-    private static func visibleBox(for shape: Int) -> CGRect {
-        switch shape {
-        case 2: return CGRect(x: 19, y: 4, width: 27, height: 56)      // uu_text
-        case 3: return CGRect(x: 11, y: 12, width: 41, height: 50)     // uu_hand
-        case 4: return CGRect(x: 11, y: 13, width: 44, height: 49)     // uu_grab
-        case 5: return CGRect(x: 2, y: 3, width: 61, height: 60)       // uu_move
-        case 6: return CGRect(x: 10, y: 11, width: 45, height: 44)     // uu_wait
-        case 7: return CGRect(x: 0, y: 0, width: 55, height: 56)       // uu_help
-        case 8: return CGRect(x: 9, y: 9, width: 47, height: 48)       // uu_crosshair
-        case 9: return CGRect(x: 0, y: 0, width: 57, height: 59)       // uu_copy
-        case 16, 25: return CGRect(x: 2, y: 22, width: 61, height: 22) // resize ew
-        case 17, 26: return CGRect(x: 22, y: 3, width: 21, height: 60) // resize ns
-        case 18, 21: return CGRect(x: 6, y: 6, width: 53, height: 54)  // resize nesw
-        case 19, 20: return CGRect(x: 6, y: 6, width: 54, height: 54)  // resize nwse
-        case 11, 12, 13, 14, 15: return CGRect(x: 10, y: 11, width: 45, height: 44)  // disabled
-        default: return CGRect(x: 0, y: 0, width: 42, height: 56)      // uu_arrow
-        }
-    }
+
 
     private var availableSymbolName: String {
         let desired: String
