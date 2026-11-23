@@ -98,12 +98,13 @@ struct SessionBottomBar: View {
                     .disabled(true)
 
                     // 主机只认 0/1/2 三档（流畅 / 高清 / 超清），名字与桌面端一致。
-                    ForEach(Array(Self.qualityOptions.enumerated()), id: \.offset) { index, option in
+                    ForEach(0..<Self.qualityOptions.count, id: \.self) { index in
                         Button {
                             session.updateVideoSettings(quality: index)
                         } label: {
                             HStack {
-                                Label(option, systemImage: Self.qualitySymbols[index])
+                                Label(Self.qualityOptions[index],
+                                      systemImage: Self.qualitySymbols[index])
                                 Spacer()
                                 if session.videoSettings.selection.quality == index {
                                     Image(systemName: "checkmark")
