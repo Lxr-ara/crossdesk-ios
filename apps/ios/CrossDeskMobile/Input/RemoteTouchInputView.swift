@@ -149,6 +149,12 @@ final class RemoteTouchSurface: UIView, UIGestureRecognizerDelegate {
     private var pinchActive = false
     // 这两个手势共享两根手指：谁先「表态」谁赢，避免滚一半突然放大。
     private var pinchCommitted = false
+    // 双击：桌面上双击是两次独立点击，间隔要在系统双击时间内；iOS 的
+    // 单击识别器只给一次 tap，所以自己记上一次点击的时间与位置。
+    private var lastClickAt: CFTimeInterval = 0
+    private var lastClickPoint: CGPoint = .zero
+    private let doubleTapWindow: CFTimeInterval = 0.28
+    private let doubleTapSlop: CGFloat = 22
     private var wheelScrolled = false
     private let relativePointerSpeed: CGFloat = 1.35
     private let maximumViewportScale: CGFloat = 10
@@ -301,6 +307,9 @@ final class RemoteTouchSurface: UIView, UIGestureRecognizerDelegate {
     @objc private func handleTap(_ recognizer: UITapGestureRecognizer) {
         guard allowsPointerGesture(recognizer) else { return }
         let location = recognizer.location(in: self)
+        // 先判定这一下是不是某个双击的第二下，再记录时间，顺序不能反。
+        let second = isSecondClick(at: location)
+        rememberClick(location)
         guard recognizer.state == .ended,
               let point = pointerPoint(for: location) else { return }
 #if DEBUG
@@ -314,6 +323,12 @@ final class RemoteTouchSurface: UIView, UIGestureRecognizerDelegate {
         onMove?(point.0, point.1)
         onLeftDown?(point.0, point.1)
         onLeftUp?(point.0, point.1)
+        if second {
+            // 桌面的双击是两次 down/up；第二下已经点过，再补一对最快的
+            // down/up，主机端就会把它合成一次双击（打开文件、进入目录都靠它）。
+            onLeftDown?(point.0, point.1)
+            onLeftUp?(point.0, point.1)
+        }
     }
 
     @objc private func handleRightTap(_ recognizer: UITapGestureRecognizer) {
@@ -443,9 +458,15 @@ final class RemoteTouchSurface: UIView, UIGestureRecognizerDelegate {
         if pinchCommitted { return }
         guard let point = pointerPoint(for: recognizer.location(in: self)) else { return }
         let translation = recognizer.translation(in: self)
-        // 12 pt 一格，和桌面滚轮一致：手指移动得越少，主机滚得越准。
-        let deltaX = Int(-translation.x / 12)
-        let deltaY = Int(-translation.y / 12)
+        // 基础 12 pt 一格；手指越快，一格对应的距离越短（最多放大到 1/3），
+        // 慢速微调时又是 12 pt，这就是触控板的手感。
+        let speed = hypot(translation.x, translation.y) / max(1, Double(recognizer.numberOfTouches))
+        let gain = min(3.0, 1.0 + speed / 60.0)
+        let step = 12.0 / gain
+        var deltaX = Int((-translation.x / step).rounded(.towardZero))
+        var deltaY = Int((-translation.y / step).rounded(.towardZero))
+        deltaX = max(-3, min(3, deltaX))
+        deltaY = max(-3, min(3, deltaY))
         if deltaX != 0 || deltaY != 0 {
             onScroll?(point.0, point.1, deltaX, deltaY)
             wheelScrolled = true
@@ -530,6 +551,19 @@ final class RemoteTouchSurface: UIView, UIGestureRecognizerDelegate {
         default:
             break
         }
+    }
+
+    private func rememberClick(_ point: CGPoint) {
+        lastClickAt = CACurrentMediaTime()
+        lastClickPoint = point
+    }
+
+    /// 第二次点击落在上一次的窗口内、位置也够近：告诉上层这是一次双击，
+    /// 由它补发第二次 down/up（主机端据此合并成双击）。
+    private func isSecondClick(at point: CGPoint) -> Bool {
+        let elapsed = CACurrentMediaTime() - lastClickAt
+        let close = hypot(point.x - lastClickPoint.x, point.y - lastClickPoint.y) <= doubleTapSlop
+        return elapsed <= doubleTapWindow && close
     }
 
     private func clamping(_ point: CGPoint, into rect: CGRect) -> CGPoint {
