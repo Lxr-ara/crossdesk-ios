@@ -27,6 +27,7 @@
 		A7C41E5B9D2849F30B6E1D43 /* TransferPanel.swift in Sources */ = {isa = PBXBuildFile; fileRef = A7C41E5B9D2849F30B6E1D42 /* TransferPanel.swift */; };
 		B4E71A2C9D3F50816A24C9D2 /* FileActions.swift in Sources */ = {isa = PBXBuildFile; fileRef = B4E71A2C9D3F50816A24C9D1 /* FileActions.swift */; };
 		C7A1B2C3D4E5F60718293A42 /* CursorMetrics.generated.swift in Sources */ = {isa = PBXBuildFile; fileRef = C7A1B2C3D4E5F60718293A41 /* CursorMetrics.generated.swift */; };
+		D8B2C3D4E5F6071829304A52 /* AnalogMousePad.swift in Sources */ = {isa = PBXBuildFile; fileRef = D8B2C3D4E5F6071829304A51 /* AnalogMousePad.swift */; };
 		100000000000000000000015 /* ../../../PRIVACY.md in Resources */ = {isa = PBXBuildFile; fileRef = 200000000000000000000015 /* ../../../PRIVACY.md */; };
 		100000000000000000000016 /* RemoteVideoSettings.swift in Sources */ = {isa = PBXBuildFile; fileRef = 200000000000000000000016 /* RemoteVideoSettings.swift */; };
 		100000000000000000000017 /* RemoteNetworkStatistics.swift in Sources */ = {isa = PBXBuildFile; fileRef = 200000000000000000000017 /* RemoteNetworkStatistics.swift */; };
@@ -91,6 +92,7 @@
 		A7C41E5B9D2849F30B6E1D42 /* TransferPanel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TransferPanel.swift; sourceTree = "<group>"; };
 		B4E71A2C9D3F50816A24C9D1 /* FileActions.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FileActions.swift; sourceTree = "<group>"; };
 		C7A1B2C3D4E5F60718293A41 /* CursorMetrics.generated.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CursorMetrics.generated.swift; sourceTree = "<group>"; };
+		D8B2C3D4E5F6071829304A51 /* AnalogMousePad.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AnalogMousePad.swift; sourceTree = "<group>"; };
 		200000000000000000000015 /* ../../../PRIVACY.md */ = {isa = PBXFileReference; lastKnownFileType = net.daringfireball.markdown; path = ../../../PRIVACY.md; sourceTree = "<group>"; };
 		200000000000000000000016 /* RemoteVideoSettings.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RemoteVideoSettings.swift; sourceTree = "<group>"; };
 		200000000000000000000017 /* RemoteNetworkStatistics.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RemoteNetworkStatistics.swift; sourceTree = "<group>"; };
@@ -153,6 +155,7 @@
 				A7C41E5B9D2849F30B6E1D42 /* TransferPanel.swift */,
 				B4E71A2C9D3F50816A24C9D1 /* FileActions.swift */,
 				C7A1B2C3D4E5F60718293A41 /* CursorMetrics.generated.swift */,
+				D8B2C3D4E5F6071829304A51 /* AnalogMousePad.swift */,
 				200000000000000000000013 /* ThumbnailFileStore.swift */,
 				200000000000000000000012 /* PrivacyPreferences.swift */,
 				200000000000000000000002 /* RemoteSessionModel.swift */,
@@ -390,6 +393,7 @@
 				A7C41E5B9D2849F30B6E1D43 /* TransferPanel.swift in Sources */,
 				B4E71A2C9D3F50816A24C9D2 /* FileActions.swift in Sources */,
 				C7A1B2C3D4E5F60718293A42 /* CursorMetrics.generated.swift in Sources */,
+				D8B2C3D4E5F6071829304A52 /* AnalogMousePad.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
