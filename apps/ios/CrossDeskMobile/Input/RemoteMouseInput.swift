@@ -1,3 +1,4 @@
+import CoreGraphics
 import Foundation
 
 /// Shared by the video surface and the virtual buttons. Coordinates always
@@ -28,6 +29,17 @@ final class RemoteMouseInput {
             position(x: x + dx / Float(viewportSize.width) * 1.35,
                      y: y + dy / Float(viewportSize.height) * 1.35)
         }
+        emit(0)
+    }
+
+    /// 相对移动：不需要按住任何键，用于「模拟鼠标」的拖动面板。
+    /// 速度曲线与触摸板一致，慢推精细、快划跨屏。
+    func nudge(dx: CGFloat, dy: CGFloat) {
+        guard viewportSize.width > 0, viewportSize.height > 0 else { return }
+        let travel = (dx * dx + dy * dy).squareRoot()
+        let gain = 0.9 + min(1.6, travel / 12.0)
+        position(x: x + Float(dx * gain / viewportSize.width),
+                 y: y + Float(dy * gain / viewportSize.height))
         emit(0)
     }
 
