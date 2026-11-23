@@ -22,6 +22,9 @@ struct AnalogMousePad: View {
 
     @State private var dragOrigin: CGSize = .zero
     @State private var scrollLast: CGFloat = 0
+    // 滚轮键按下去不动 = 中键点击；动了 = 滚轮。真鼠标就是这个语义。
+    @State private var middleArmed = false
+    @State private var middleClick = false
     @State private var leftDown = false
     @State private var rightDown = false
     @State private var scrollAccum: CGFloat = 0
@@ -164,10 +167,17 @@ struct AnalogMousePad: View {
         DragGesture(minimumDistance: 0)
             .onChanged { value in
                 guard viewportSize.height > 0 else { return }
+                if !middleArmed {
+                    middleArmed = true
+                    middleClick = true
+                }
                 let dy = value.translation.height - scrollLast
                 scrollLast = value.translation.height
                 scrollAccum += dy
-                // 与两指滚轮同一套手感：12 pt 一格，快滑放大步长，最多 3 格。
+                // 移动超过 6 pt 就认定是滚轮，不再算中键。
+                if abs(value.translation.height) > 6 || abs(value.translation.width) > 6 {
+                    middleClick = false
+                }
                 let speed = abs(dy)
                 let gain = min(3.0, 1.0 + speed / 20.0)
                 let step = CGFloat(12.0 / gain)
@@ -177,8 +187,14 @@ struct AnalogMousePad: View {
                 }
             }
             .onEnded { _ in
+                if middleClick {
+                    mouseInput.setMiddleButton(down: true)
+                    mouseInput.setMiddleButton(down: false)
+                }
                 scrollAccum = 0
                 scrollLast = 0
+                middleArmed = false
+                middleClick = false
             }
     }
 
