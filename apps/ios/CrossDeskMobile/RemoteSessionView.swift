@@ -547,6 +547,29 @@ struct RemoteSessionView: View {
                                        height: containerSize.height)
                                 .allowsHitTesting(true)
                         }
+                        if session.pixelBuffer != nil {
+                            SessionBottomBar(
+                                session: session,
+                                keyboardVisible: $keyboardInputVisible,
+                                shortcutsVisible: $shortcutManagerVisible,
+                                showsFiles: { showingFileImporter = true },
+                                showsPhotoAlbum: { showingPhotoGallery = true },
+                                showsReceivedFiles: { showingReceivedFiles = true },
+                                showsTransferPanel: { showingTransferPanel = true },
+                                showsRemoteFiles: { showingRemoteFiles = true },
+                                showsDisplays: {
+                                    // 显示器多于一个才切换，否则忽略，避免误触。
+                                    guard session.displaySizes.count > 1 else { return }
+                                    session.selectDisplay((session.selectedDisplay + 1)
+                                                         % session.displaySizes.count)
+                                },
+                                onReleaseButtons: { mouseInput.releaseAll() }
+                            )
+                            .padding(.horizontal, 12)
+                            .padding(.bottom, 8)
+                            .frame(maxWidth: .infinity, maxHeight: .infinity,
+                                   alignment: .bottom)
+                        }
                         analogMouseToggle
                 photoGalleryLauncher
                 CrossDeskStatusOrb(isExpanded: statusMenuVisible)
