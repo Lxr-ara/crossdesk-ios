@@ -151,6 +151,8 @@ final class RemoteTouchSurface: UIView, UIGestureRecognizerDelegate {
     private var pinchCommitted = false
     // 双击：桌面上双击是两次独立点击，间隔要在系统双击时间内；iOS 的
     // 单击识别器只给一次 tap，所以自己记上一次点击的时间与位置。
+    // 绝对模式的平滑状态：慢速时多平滑（抗抖），快速时少平滑（不拖尾）。
+    private var smoothedAbsolute: (Float, Float)?
     private var lastClickAt: CFTimeInterval = 0
     private var lastClickPoint: CGPoint = .zero
     private let doubleTapWindow: CFTimeInterval = 0.28
@@ -354,8 +356,17 @@ final class RemoteTouchSurface: UIView, UIGestureRecognizerDelegate {
             if viewportScale > 1.001 {
                 panViewportIfPointerBeyondEdge(location, rect: rect)
             }
-            guard let point = normalized(clamping(location, into: rect)) else { return }
+            guard let raw = normalized(clamping(location, into: rect)) else { return }
+            let point = smoothed(raw, previous: smoothedAbsolute, in: rect)
+            smoothedAbsolute = point
             onMove?(point.0, point.1)
+        case .ended, .cancelled, .failed:
+            // 松手时补一次原始坐标：平滑只该在移动中起作用，不能留下残差。
+            smoothedAbsolute = nil
+            guard let rect = renderRect(),
+                  let raw = normalized(clamping(recognizer.location(in: self), into: rect))
+            else { return }
+            onMove?(raw.0, raw.1)
         default:
             break
         }
@@ -566,6 +577,22 @@ final class RemoteTouchSurface: UIView, UIGestureRecognizerDelegate {
         return elapsed <= doubleTapWindow && close
     }
 
+    /// 自适应平滑：位移越小、权重越低（抗手抖），位移越大、权重越高（不拖尾）。
+    /// 返回的是同一个坐标系下的归一化点。
+    private func smoothed(_ raw: (Float, Float),
+                          previous: (Float, Float)?,
+                          in rect: CGRect) -> (Float, Float) {
+        guard let previous else { return raw }
+        let dx = Double(raw.0 - previous.0) * rect.width
+        let dy = Double(raw.1 - previous.1) * rect.height
+        let distance = (dx * dx + dy * dy).squareRoot()
+        // 1 px 的手抖几乎不平滑；30 px 以上的划动基本直通。
+        let alpha = min(0.92, max(0.35, 0.30 + distance / 26.0))
+        let x = Double(previous.0) + (Double(raw.0) - Double(previous.0)) * alpha
+        let y = Double(previous.1) + (Double(raw.1) - Double(previous.1)) * alpha
+        return (Float(x), Float(y))
+    }
+
     private func clamping(_ point: CGPoint, into rect: CGRect) -> CGPoint {
         // Inside the picture the location passes through untouched; outside it is
         // pinned to the nearest edge so the pointer never leaves the surface.
@@ -615,8 +642,10 @@ final class RemoteTouchSurface: UIView, UIGestureRecognizerDelegate {
     private func updateRelativeCursor(by translation: CGPoint) -> (Float, Float)? {
         guard let renderRect = renderRect(),
               renderRect.width > 0, renderRect.height > 0 else { return nil }
-        let delta = CGPoint(x: translation.x * relativePointerSpeed,
-                            y: translation.y * relativePointerSpeed)
+        // 速度曲线：慢推约 0.9 倍（像素级对位），快划最高 2.6 倍（一次跨屏）。
+        let travel = (translation.x * translation.x + translation.y * translation.y).squareRoot()
+        let gain = relativePointerSpeed * (0.65 + min(1.35, travel / 16.0))
+        let delta = CGPoint(x: translation.x * gain, y: translation.y * gain)
         guard delta.x.isFinite, delta.y.isFinite else { return nil }
         let cursorY = renderRect.minY + CGFloat(relativeCursorPoint.1) * renderRect.height
         let overflowY = RemoteVideoGeometry.verticalPointerOverflow(
