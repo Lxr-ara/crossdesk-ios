@@ -14,7 +14,8 @@ final class RemoteMouseInput {
     private var gestureLeft = false
     private var virtualLeft = false
     private var virtualRight = false
-    var hasVirtualButton: Bool { virtualLeft || virtualRight }
+    private var virtualMiddle = false
+    var hasVirtualButton: Bool { virtualLeft || virtualRight || virtualMiddle }
 
     func position(x: Float, y: Float) {
         self.x = min(max(x, 0), 1)
@@ -59,6 +60,14 @@ final class RemoteMouseInput {
         emit(left ? (down ? 1 : 2) : (down ? 3 : 4))
     }
 
+    /// 中键：线协议里的 middle_down(5) / middle_up(6)，桌面端注入 MIDDLEDOWN/UP。
+    func setMiddleButton(down: Bool) {
+        guard virtualMiddle != down else { return }
+        if down { setGestureLeft(false) }
+        virtualMiddle = down
+        emit(down ? 5 : 6)
+    }
+
     func scroll(_ direction: Int) {
         guard direction != 0 else { return }
         emit(7, wheel: direction > 0 ? 1 : -1)
@@ -68,6 +77,7 @@ final class RemoteMouseInput {
         setGestureLeft(false)
         setVirtualButton(left: true, down: false)
         setVirtualButton(left: false, down: false)
+        if virtualMiddle { setMiddleButton(down: false) }
         revision &+= 1
         didCancel?()
     }
