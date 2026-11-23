@@ -235,6 +235,8 @@ struct RemoteSessionView: View {
                 case 2: session.bridge.sendPointer(x: x, y: y, action: .leftUp)
                 case 3: session.bridge.sendPointer(x: x, y: y, action: .rightDown)
                 case 4: session.bridge.sendPointer(x: x, y: y, action: .rightUp)
+                case 5: session.bridge.sendPointer(x: x, y: y, action: .middleDown)
+                case 6: session.bridge.sendPointer(x: x, y: y, action: .middleUp)
                 case 7: session.bridge.sendScrollX(x, y: y, deltaX: 0, deltaY: wheel)
                 default: break
                 }
