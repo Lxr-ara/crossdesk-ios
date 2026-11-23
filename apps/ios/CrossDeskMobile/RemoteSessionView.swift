@@ -537,8 +537,10 @@ struct RemoteSessionView: View {
                         .padding(.bottom, 84)
                 }
                         if analogMouseEnabled && session.pixelBuffer != nil {
+                            // 视口尺寸由触摸层写进 mouseInput（renderRect 的实际大小），
+                            // 这里不依赖本作用域里没有的 videoRect。
                             AnalogMousePad(mouseInput: mouseInput,
-                                           viewportSize: videoRect.size)
+                                           viewportSize: mouseInput.viewportSize)
                                 .frame(width: containerSize.width,
                                        height: containerSize.height)
                                 .allowsHitTesting(true)
