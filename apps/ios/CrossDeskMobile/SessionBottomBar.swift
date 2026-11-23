@@ -22,6 +22,10 @@ struct SessionBottomBar: View {
     @State private var operationsOpen = false
     @State private var toolsOpen = false
 
+    // 主机只认 0/1/2 三档，名字与桌面端一致。
+    private static let qualityOptions = ["流畅", "高清", "超清"]
+    private static let qualitySymbols = ["speedometer", "sparkles", "4k.tv"]
+
     private var target: CGFloat { BarMetrics.barTarget }
     private var icon: CGFloat { BarMetrics.barIcon }
 
