@@ -65,6 +65,8 @@ struct RemoteSessionView: View {
     @AppStorage("analogMouseEnabled") private var analogMouseEnabled = false
     // 观看模式：客户端不再发送输入（桌面端还有一道闸门，双保险）。
     @AppStorage("watchOnlyMode") private var watchOnlyMode = false
+    // 屏幕旋转：0/90/180/270，客户端显示旋转（对齐 UU 的 screenRotation）。
+    @AppStorage("videoRotationDegrees") private var videoRotationDegrees = 0
     @State private var statusMenuVisible = false
     @State private var showingPhotoGallery = false
     @State private var showingReceivedFiles = false
@@ -94,6 +96,7 @@ struct RemoteSessionView: View {
                             if let cursorPosition,
                                session.pixelBuffer != nil {
                                 RemoteCursorOverlay(
+                                    quarterTurns: videoRotationDegrees / 90,
                                     normalizedPosition: cursorPosition,
                                     normalizedVisualOffset:
                                         session.remoteCursorVisualOffset,
@@ -107,6 +110,9 @@ struct RemoteSessionView: View {
                         }
                             .frame(width: videoRect.width,
                                    height: videoRect.height)
+                            // 旋转屏幕：画面与光标一起转，触摸层用同一个角度反解坐标，
+                            // 所以「看到的点」和「点到的点」始终一致。
+                            .rotationEffect(.degrees(Double(videoRotationDegrees)))
                             .position(x: videoRect.midX, y: videoRect.midY)
                             .scaleEffect(viewport.scale, anchor: .center)
                             .offset(viewport.offset)
@@ -120,6 +126,7 @@ struct RemoteSessionView: View {
                         remoteCursorPositionRevision: session.remoteCursorPositionRevision,
                         viewportScale: viewport.scale,
                         viewportOffset: viewport.offset,
+                        quarterTurns: videoRotationDegrees / 90,
                         viewportChanged: { scale, offset in
                             // Scale and offset describe one affine transform.
                             // Publish them atomically so all layers observe the
@@ -568,16 +575,10 @@ struct RemoteSessionView: View {
                                                          % session.displaySizes.count)
                                 },
                                 onReleaseButtons: { mouseInput.releaseAll() },
-                                onToggleKeyboard: {
-                                    // 每次从底栏进键盘都回到真正的系统键盘，避免
-                                    // 停在上次的快捷键/电脑键盘页。
-                                    if keyboardInputVisible {
-                                        keyboardInputVisible = false
-                                    } else {
-                                        keyboardMode = .system
-                                        waitingForSystemKeyboard = true
-                                        keyboardInputVisible = true
-                                    }
+                                onChooseKeyboard: { computer in
+                                    keyboardMode = computer ? .computer : .system
+                                    waitingForSystemKeyboard = !computer
+                                    keyboardInputVisible = true
                                 }
                             )
                             .padding(.horizontal, 12)
@@ -1811,6 +1812,7 @@ private struct FloatingControlLabel: View {
 }
 
 private struct RemoteCursorOverlay: View {
+    let quarterTurns: Int
     let normalizedPosition: CGPoint
     let normalizedVisualOffset: CGPoint
     let contentSize: CGSize
@@ -1820,10 +1822,12 @@ private struct RemoteCursorOverlay: View {
 
     var body: some View {
         let scale = max(viewportScale, 0.0001)
-        let x = min(max(normalizedPosition.x + normalizedVisualOffset.x, 0), 1) *
-            contentSize.width
-        let y = min(max(normalizedPosition.y + normalizedVisualOffset.y, 0), 1) *
-            contentSize.height
+        // 远端归一化点先正转到显示空间，再乘到画幅上——否则旋转后光标位置会错位。
+        let raw = (Float(min(max(normalizedPosition.x + normalizedVisualOffset.x, 0), 1)),
+                   Float(min(max(normalizedPosition.y + normalizedVisualOffset.y, 0), 1)))
+        let turned = RemoteVideoGeometry.rotate(raw, quarterTurns: quarterTurns)
+        let x = CGFloat(turned.0) * contentSize.width
+        let y = CGFloat(turned.1) * contentSize.height
         let offset = RemoteCursorGlyph.hotspotOffset(for: shape, size: glyphSize)
 
         ZStack(alignment: .topLeading) {
