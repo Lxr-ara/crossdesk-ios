@@ -551,17 +551,6 @@ struct RemoteSessionView: View {
                             SessionBottomBar(
                                 session: session,
                                 keyboardVisible: $keyboardInputVisible,
-                                onToggleKeyboard: {
-                                    // 每次从底栏进键盘都回到真正的系统键盘，避免
-                                    // 停在上次的快捷键/电脑键盘页。
-                                    if keyboardInputVisible {
-                                        keyboardInputVisible = false
-                                    } else {
-                                        keyboardMode = .system
-                                        waitingForSystemKeyboard = true
-                                        keyboardInputVisible = true
-                                    }
-                                },
                                 shortcutsVisible: $shortcutManagerVisible,
                                 showsFiles: { showingFileImporter = true },
                                 showsPhotoAlbum: { showingPhotoGallery = true },
@@ -574,7 +563,18 @@ struct RemoteSessionView: View {
                                     session.selectDisplay((session.selectedDisplay + 1)
                                                          % session.displaySizes.count)
                                 },
-                                onReleaseButtons: { mouseInput.releaseAll() }
+                                onReleaseButtons: { mouseInput.releaseAll() },
+                                onToggleKeyboard: {
+                                    // 每次从底栏进键盘都回到真正的系统键盘，避免
+                                    // 停在上次的快捷键/电脑键盘页。
+                                    if keyboardInputVisible {
+                                        keyboardInputVisible = false
+                                    } else {
+                                        keyboardMode = .system
+                                        waitingForSystemKeyboard = true
+                                        keyboardInputVisible = true
+                                    }
+                                }
                             )
                             .padding(.horizontal, 12)
                             .padding(.bottom, 8)
