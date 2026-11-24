@@ -1870,12 +1870,20 @@ private struct RemoteCursorGlyph: View {
     let size: CGFloat
 
     var body: some View {
-        // UU remote cursor art: the desktop controller draws the same assets, so
-        // the phone shows exactly the pointer the user sees on the host.
-        Image(RemoteCursorGlyph.assetName(for: shape))
-            .resizable()
-            .interpolation(.high)
-            .scaledToFit()
+        // 优先用 UU 自己的矢量光标（Assets.car 里的 cursor_*.pdf，与它 CursorView
+        // 加载的是同一份素材）；没有矢量对应项时才退回桌面端的 uu_*.png。
+        Group {
+            if let asset = CursorArt.asset(for: shape),
+               let vector = VectorCursorCache.shared.image(
+                    named: asset, pointSize: CGSize(width: size, height: size)) {
+                Image(uiImage: vector).resizable().interpolation(.high).scaledToFit()
+            } else {
+                Image(RemoteCursorGlyph.assetName(for: shape))
+                    .resizable()
+                    .interpolation(.high)
+                    .scaledToFit()
+            }
+        }
             .frame(width: size, height: size)
             .accessibilityHidden(true)
     }
@@ -1911,7 +1919,16 @@ private struct RemoteCursorGlyph: View {
     /// `.position` 定位的是视图中心，所以把热点换算成「中心偏移」再返回：
     /// 中心 = 目标点 + (tile/2 - 热点)。与桌面端「左上角放在 目标点 - 热点」等价。
     static func hotspotOffset(for shape: Int, size: CGFloat) -> CGPoint {
-        let hotspot = CursorMetrics.hotspot(for: shape, tile: size)
+        // 矢量素材的热点在 128 pt 画布里（实测绘制区域），位图在 64 px 画布里。
+        let hotspot: CGPoint
+        if CursorArt.asset(for: shape) != nil {
+            let canvas = CursorArt.canvas(for: shape)
+            let raw = CursorArt.hotspot(for: shape)
+            let unit = size / max(canvas, 1)
+            hotspot = CGPoint(x: raw.x * unit, y: raw.y * unit)
+        } else {
+            hotspot = CursorMetrics.hotspot(for: shape, tile: size)
+        }
         return CGPoint(x: size / 2 - hotspot.x, y: size / 2 - hotspot.y)
     }
 
