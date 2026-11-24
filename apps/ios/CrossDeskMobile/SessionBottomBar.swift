@@ -1,10 +1,13 @@
 import SwiftUI
 
-/// UU远程 式底部控制条。
+/// UU远程 式底部控制条 + 会话内面板。
 ///
-/// `BarMetrics` 由 `libs/wire/include/remote_cursor_metrics.h` 生成，数值来自 UU 自己的资源：
-/// `icon_tool_*` 是 24 pt 画布，`icon_tool_hover_*` 是 40 pt 触摸目标——所以图标 24、
-/// 目标 40、条高 56、间距 8、圆角 28。桌面端读同一组常量，两端不会各画各的。
+/// 几何来自 UU 自己的资源（`icon_tool_*` 24 pt 画布、`icon_tool_hover_*` 40 pt 触摸目标），
+/// 由 `BarMetrics.generated.swift` 提供，桌面端读同一组常量。
+///
+/// 面板按 UU 的两点做法复刻：
+/// 1. 工具页是**数据驱动**列表（它的日志里就有「不构建工具列表 / 刷新工具列表」）；
+/// 2. 观看模式是**总开关**，开启后点击被忽略并提示，而不是把按钮藏起来。
 struct SessionBottomBar: View {
     let session: RemoteSessionModel
 
@@ -20,10 +23,13 @@ struct SessionBottomBar: View {
     var onReleaseButtons: () -> Void
     var onToggleKeyboard: () -> Void
 
+    @AppStorage("watchOnlyMode") private var watchOnly = false
+    @State private var keyboardChooserOpen = false
     @State private var operationsOpen = false
     @State private var toolsOpen = false
+    @State private var combineKeysOpen = false
+    @State private var toast: String?
 
-    // 主机只认 0/1/2 三档，名字与桌面端一致。
     private static let qualityOptions = ["流畅", "高清", "超清"]
     private static let qualitySymbols = ["speedometer", "sparkles", "4k.tv"]
 
@@ -33,23 +39,21 @@ struct SessionBottomBar: View {
     var body: some View {
         HStack(spacing: BarMetrics.barGap) {
             item("rectangle.on.rectangle", "所有窗口", active: false) {
-                // 桌面端的「任务视图」：Win+Tab（macOS 上是 Control+↑，靠主机端映射）
-                session.sendKeyChord(0x09, modifiers: [0x5B])
+                act("所有窗口") { session.sendKeyChord(0x09, modifiers: [0x5B]) }
             }
             item("rectangle.inset.filled", "显示桌面", active: false) {
-                session.sendKeyChord(0x44, modifiers: [0x5B])
+                act("显示桌面") { session.sendKeyChord(0x44, modifiers: [0x5B]) }
             }
             item("keyboard", "键盘", active: keyboardVisible) {
-                onToggleKeyboard()
-                if keyboardVisible { shortcutsVisible = false }
+                keyboardChooserOpen = true
             }
             item("slider.horizontal.3", "操作", active: operationsOpen) {
                 toolsOpen = false
-                operationsOpen.toggle()
+                operationsOpen = true
             }
             item("wrench.and.screwdriver", "工具", active: toolsOpen) {
                 operationsOpen = false
-                toolsOpen.toggle()
+                toolsOpen = true
             }
         }
         .padding(.horizontal, BarMetrics.barInset)
@@ -61,8 +65,48 @@ struct SessionBottomBar: View {
                 .strokeBorder(.white.opacity(0.22), lineWidth: 1)
         )
         .shadow(color: .black.opacity(0.22), radius: 12, y: 6)
+        .overlay(alignment: .bottom) { toastView }
+        .sheet(isPresented: $keyboardChooserOpen) { keyboardChooser }
         .sheet(isPresented: $operationsOpen) { operationsSheet }
         .sheet(isPresented: $toolsOpen) { toolsSheet }
+        .sheet(isPresented: $combineKeysOpen) {
+            CombineKeysView(
+                session: session,
+                onSend: { key, modifiers in session.sendKeyChord(key, modifiers: modifiers) },
+                onDismiss: { combineKeysOpen = false }
+            )
+        }
+    }
+
+    // MARK: 观看模式：拦截 + 提示
+
+    private func act(_ name: String, _ body: () -> Void) {
+        if watchOnly {
+            show("观看模式下已忽略「\(name)」")
+            return
+        }
+        body()
+    }
+
+    private func show(_ text: String) {
+        toast = text
+        Task {
+            try? await Task.sleep(nanoseconds: 1_600_000_000)
+            await MainActor.run { if toast == text { toast = nil } }
+        }
+    }
+
+    @ViewBuilder
+    private var toastView: some View {
+        if let toast {
+            Text(toast)
+                .font(.footnote)
+                .padding(.horizontal, 12)
+                .padding(.vertical, 8)
+                .background(.black.opacity(0.72), in: Capsule())
+                .foregroundStyle(.white)
+                .padding(.bottom, BarMetrics.barHeight + 8)
+        }
     }
 
     private func item(_ symbol: String, _ title: String, active: Bool,
@@ -70,7 +114,7 @@ struct SessionBottomBar: View {
         Button(action: action) {
             VStack(spacing: 2) {
                 Image(systemName: symbol)
-                    .font(.system(size: icon * 0.8, weight: .regular))
+                    .font(.system(size: icon * 0.8))
                     .frame(height: icon)
                 Text(title)
                     .font(.system(size: 10, weight: .medium))
@@ -87,14 +131,68 @@ struct SessionBottomBar: View {
         .accessibilityLabel(Text(title))
     }
 
+    // MARK: 键盘选择：系统键盘 / 电脑键盘 / 快捷键 / 组合键
+
+    private var keyboardChooser: some View {
+        NavigationStack {
+            List {
+                Section {
+                    Button {
+                        keyboardChooserOpen = false
+                        onToggleKeyboard()
+                    } label: {
+                        Label("系统键盘（直接打字）", systemImage: "keyboard")
+                    }
+                    Button {
+                        keyboardChooserOpen = false
+                        onToggleKeyboard()
+                    } label: {
+                        Label("电脑键盘（全尺寸布局）", systemImage: "keyboard.badge.ellipsis")
+                    }
+                    Button {
+                        keyboardChooserOpen = false
+                        shortcutsVisible = true
+                    } label: {
+                        Label("快捷键面板", systemImage: "command")
+                    }
+                    Button {
+                        keyboardChooserOpen = false
+                        combineKeysOpen = true
+                    } label: {
+                        Label("组合键（多键同时按下）", systemImage: "option")
+                    }
+                } footer: {
+                    Text("系统键盘与电脑键盘共用同一输入通道；组合键用于 Ctrl+Alt+Del 这类桌面操作。")
+                }
+            }
+            .navigationTitle("键盘")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button("完成") { keyboardChooserOpen = false }
+                }
+            }
+        }
+        .presentationDetents([.height(320), .medium])
+    }
+
     // MARK: 操作
 
     private var operationsSheet: some View {
         NavigationStack {
             List {
+                Section("观看模式") {
+                    Toggle(isOn: $watchOnly) {
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text("只看不动")
+                            Text("开启后底栏点击会被忽略并提示")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        }
+                    }
+                }
                 Section("画面") {
                     Button {
-                        // 旋转屏幕：主机端还没有这条 op，先如实标出来。
                         operationsOpen = false
                     } label: {
                         Label("旋转屏幕（主机暂未支持）", systemImage: "rotate.right")
@@ -102,10 +200,9 @@ struct SessionBottomBar: View {
                     }
                     .disabled(true)
 
-                    // 主机只认 0/1/2 三档（流畅 / 高清 / 超清），名字与桌面端一致。
                     ForEach(0..<Self.qualityOptions.count, id: \.self) { index in
                         Button {
-                            session.updateVideoSettings(quality: index)
+                            act("画质") { session.updateVideoSettings(quality: index) }
                         } label: {
                             HStack {
                                 Label(Self.qualityOptions[index],
@@ -119,36 +216,22 @@ struct SessionBottomBar: View {
                     }
                     Button {
                         operationsOpen = false
-                        showsDisplays()
+                        act("切换显示器") { showsDisplays() }
                     } label: {
                         Label("切换显示器", systemImage: "display.2")
                     }
                 }
                 Section("声音与隐私") {
                     Button {
-                        session.toggleAudio()
+                        act("声音") { session.toggleAudio() }
                     } label: {
                         Label(session.audioEnabled ? "关闭远端声音" : "开启远端声音",
                               systemImage: session.audioEnabled ? "speaker.slash" : "speaker.wave.2")
                     }
                     Button {
-                        session.togglePrivacyScreen()
+                        act("隐私屏") { session.togglePrivacyScreen() }
                     } label: {
                         Label("隐私屏", systemImage: "eye.slash")
-                    }
-                }
-                Section("快捷键") {
-                    Button {
-                        operationsOpen = false
-                        shortcutsVisible = true
-                    } label: {
-                        Label("快捷键面板", systemImage: "command")
-                    }
-                    Button {
-                        operationsOpen = false
-                        keyboardVisible = true
-                    } label: {
-                        Label("电脑键盘", systemImage: "keyboard")
                     }
                 }
             }
@@ -163,37 +246,63 @@ struct SessionBottomBar: View {
         .presentationDetents([.medium, .large])
     }
 
-    // MARK: 工具
+    // MARK: 工具（数据驱动）
+
+    private struct ToolRow: Identifiable {
+        let id = UUID()
+        let title: String
+        let symbol: String
+        let note: String?
+        let action: () -> Void
+    }
+
+    private var toolRows: [ToolRow] {
+        [
+            ToolRow(title: "传输面板", symbol: "arrow.up.arrow.down.circle", note: nil) {
+                showsTransferPanel()
+            },
+            ToolRow(title: "发送文件", symbol: "doc.badge.plus", note: nil) {
+                showsFiles()
+            },
+            ToolRow(title: "接收的文件", symbol: "tray.and.arrow.down", note: nil) {
+                showsReceivedFiles()
+            },
+            ToolRow(title: "远端文件", symbol: "externaldrive.connected.to.line.below", note: nil) {
+                showsRemoteFiles()
+            },
+            ToolRow(title: "相册", symbol: "photo.on.rectangle.angled", note: nil) {
+                showsPhotoAlbum()
+            },
+            ToolRow(title: "发送剪贴板", symbol: "doc.on.clipboard",
+                    note: session.clipboardStatus) { session.sendClipboard() },
+            ToolRow(title: "组合键", symbol: "option", note: nil) { combineKeysOpen = true },
+            ToolRow(title: "释放所有按键", symbol: "hand.raised", note: nil) { onReleaseButtons() },
+            ToolRow(title: "Ctrl+Alt+Del", symbol: "lock.shield", note: nil) {
+                session.sendSecureAttention()
+            },
+        ]
+    }
 
     private var toolsSheet: some View {
         NavigationStack {
             List {
-                Section("文件") {
-                    Button { toolsOpen = false; showsTransferPanel() } label: {
-                        Label("传输面板", systemImage: "arrow.up.arrow.down.circle")
-                    }
-                    Button { toolsOpen = false; showsFiles() } label: {
-                        Label("发送文件", systemImage: "doc.badge.plus")
-                    }
-                    Button { toolsOpen = false; showsReceivedFiles() } label: {
-                        Label("接收的文件", systemImage: "tray.and.arrow.down")
-                    }
-                    Button { toolsOpen = false; showsRemoteFiles() } label: {
-                        Label("远端文件", systemImage: "externaldrive.connected.to.line.below")
-                    }
-                    Button { toolsOpen = false; showsPhotoAlbum() } label: {
-                        Label("相册", systemImage: "photo.on.rectangle.angled")
-                    }
-                }
-                Section("输入") {
-                    Button { toolsOpen = false; onReleaseButtons() } label: {
-                        Label("释放所有按键", systemImage: "hand.raised")
-                    }
-                    Button { session.sendClipboard() } label: {
-                        Label("发送剪贴板", systemImage: "doc.on.clipboard")
-                    }
-                    Button { session.sendSecureAttention() } label: {
-                        Label("发送 Ctrl+Alt+Del", systemImage: "lock.shield")
+                Section("工具") {
+                    ForEach(toolRows) { row in
+                        Button {
+                            toolsOpen = false
+                            act(row.title) { row.action() }
+                        } label: {
+                            HStack {
+                                Label(row.title, systemImage: row.symbol)
+                                Spacer()
+                                if let note = row.note, !note.isEmpty {
+                                    Text(note)
+                                        .font(.caption)
+                                        .foregroundStyle(.secondary)
+                                        .lineLimit(1)
+                                }
+                            }
+                        }
                     }
                 }
             }
