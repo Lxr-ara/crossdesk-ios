@@ -63,6 +63,8 @@ struct RemoteSessionView: View {
     // 模拟鼠标（UU 的 analogMouse）：一只可拖动的鼠标面板，按住左键拖动=拖拽，
     // 中间条=滚轮。默认关闭，避免和老式虚拟鼠标条重复。
     @AppStorage("analogMouseEnabled") private var analogMouseEnabled = false
+    // 观看模式：客户端不再发送输入（桌面端还有一道闸门，双保险）。
+    @AppStorage("watchOnlyMode") private var watchOnlyMode = false
     @State private var statusMenuVisible = false
     @State private var showingPhotoGallery = false
     @State private var showingReceivedFiles = false
@@ -228,6 +230,8 @@ struct RemoteSessionView: View {
         .onAppear {
             mouseInput.send = { x, y, flag, wheel in
                 cursorPosition = CGPoint(x: CGFloat(x), y: CGFloat(y))
+                // 观看模式：本地不再上报任何按键/移动，光标仍跟着手指显示。
+                if watchOnlyMode && flag != 0 { return }
                 if flag == 1 || flag == 3 { systemKeyboardContext.remoteFocusWillChange() }
                 switch flag {
                 case 0: session.bridge.sendPointer(x: x, y: y, action: .move)
