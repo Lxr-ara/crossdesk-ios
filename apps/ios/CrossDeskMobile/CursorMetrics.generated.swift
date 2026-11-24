@@ -9,10 +9,10 @@ import CoreGraphics
 
 enum CursorMetrics {
     static let canvas: CGFloat = 64
-    static let defaultTile: CGFloat = 11.0
-    static let smallTile: CGFloat = 9.0
-    static let standardTile: CGFloat = 11.0
-    static let largeTile: CGFloat = 14.0
+    static let defaultTile: CGFloat = 14.5
+    static let smallTile: CGFloat = 12.0
+    static let standardTile: CGFloat = 14.5
+    static let largeTile: CGFloat = 18.0
 
     /// Visible bounding box of the glyph inside the 64 px canvas (measured).
     static func visibleBox(for shape: Int) -> CGRect {
