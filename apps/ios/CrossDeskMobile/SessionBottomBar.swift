@@ -18,6 +18,7 @@ struct SessionBottomBar: View {
     var showsRemoteFiles: () -> Void
     var showsDisplays: () -> Void
     var onReleaseButtons: () -> Void
+    var onToggleKeyboard: () -> Void
 
     @State private var operationsOpen = false
     @State private var toolsOpen = false
@@ -39,7 +40,7 @@ struct SessionBottomBar: View {
                 session.sendKeyChord(0x44, modifiers: [0x5B])
             }
             item("keyboard", "键盘", active: keyboardVisible) {
-                keyboardVisible.toggle()
+                onToggleKeyboard()
                 if keyboardVisible { shortcutsVisible = false }
             }
             item("slider.horizontal.3", "操作", active: operationsOpen) {
