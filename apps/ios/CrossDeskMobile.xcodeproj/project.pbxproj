@@ -30,6 +30,7 @@
 		D8B2C3D4E5F6071829304A52 /* AnalogMousePad.swift in Sources */ = {isa = PBXBuildFile; fileRef = D8B2C3D4E5F6071829304A51 /* AnalogMousePad.swift */; };
 		E9C3D4E5F607182930415A64 /* BarMetrics.generated.swift in Sources */ = {isa = PBXBuildFile; fileRef = E9C3D4E5F607182930415A63 /* BarMetrics.generated.swift */; };
 		E9C3D4E5F607182930415A62 /* SessionBottomBar.swift in Sources */ = {isa = PBXBuildFile; fileRef = E9C3D4E5F607182930415A61 /* SessionBottomBar.swift */; };
+		F1D2E3F405162738490A5B72 /* CombineKeysView.swift in Sources */ = {isa = PBXBuildFile; fileRef = F1D2E3F405162738490A5B71 /* CombineKeysView.swift */; };
 		100000000000000000000015 /* ../../../PRIVACY.md in Resources */ = {isa = PBXBuildFile; fileRef = 200000000000000000000015 /* ../../../PRIVACY.md */; };
 		100000000000000000000016 /* RemoteVideoSettings.swift in Sources */ = {isa = PBXBuildFile; fileRef = 200000000000000000000016 /* RemoteVideoSettings.swift */; };
 		100000000000000000000017 /* RemoteNetworkStatistics.swift in Sources */ = {isa = PBXBuildFile; fileRef = 200000000000000000000017 /* RemoteNetworkStatistics.swift */; };
@@ -97,6 +98,7 @@
 		D8B2C3D4E5F6071829304A51 /* AnalogMousePad.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AnalogMousePad.swift; sourceTree = "<group>"; };
 		E9C3D4E5F607182930415A63 /* BarMetrics.generated.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BarMetrics.generated.swift; sourceTree = "<group>"; };
 		E9C3D4E5F607182930415A61 /* SessionBottomBar.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SessionBottomBar.swift; sourceTree = "<group>"; };
+		F1D2E3F405162738490A5B71 /* CombineKeysView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CombineKeysView.swift; sourceTree = "<group>"; };
 		200000000000000000000015 /* ../../../PRIVACY.md */ = {isa = PBXFileReference; lastKnownFileType = net.daringfireball.markdown; path = ../../../PRIVACY.md; sourceTree = "<group>"; };
 		200000000000000000000016 /* RemoteVideoSettings.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RemoteVideoSettings.swift; sourceTree = "<group>"; };
 		200000000000000000000017 /* RemoteNetworkStatistics.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RemoteNetworkStatistics.swift; sourceTree = "<group>"; };
@@ -162,6 +164,7 @@
 				D8B2C3D4E5F6071829304A51 /* AnalogMousePad.swift */,
 				E9C3D4E5F607182930415A63 /* BarMetrics.generated.swift */,
 				E9C3D4E5F607182930415A61 /* SessionBottomBar.swift */,
+				F1D2E3F405162738490A5B71 /* CombineKeysView.swift */,
 				200000000000000000000013 /* ThumbnailFileStore.swift */,
 				200000000000000000000012 /* PrivacyPreferences.swift */,
 				200000000000000000000002 /* RemoteSessionModel.swift */,
@@ -402,6 +405,7 @@
 				D8B2C3D4E5F6071829304A52 /* AnalogMousePad.swift in Sources */,
 				E9C3D4E5F607182930415A64 /* BarMetrics.generated.swift in Sources */,
 				E9C3D4E5F607182930415A62 /* SessionBottomBar.swift in Sources */,
+				F1D2E3F405162738490A5B72 /* CombineKeysView.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
