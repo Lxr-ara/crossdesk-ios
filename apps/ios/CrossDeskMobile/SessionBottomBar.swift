@@ -21,9 +21,11 @@ struct SessionBottomBar: View {
     var showsRemoteFiles: () -> Void
     var showsDisplays: () -> Void
     var onReleaseButtons: () -> Void
-    var onToggleKeyboard: () -> Void
+    /// true = 电脑键盘布局，false = 系统键盘。
+    var onChooseKeyboard: (Bool) -> Void
 
     @AppStorage("watchOnlyMode") private var watchOnly = false
+    @AppStorage("videoRotationDegrees") private var rotationDegrees = 0
     @State private var keyboardChooserOpen = false
     @State private var operationsOpen = false
     @State private var toolsOpen = false
@@ -139,13 +141,13 @@ struct SessionBottomBar: View {
                 Section {
                     Button {
                         keyboardChooserOpen = false
-                        onToggleKeyboard()
+                        onChooseKeyboard(false)
                     } label: {
                         Label("系统键盘（直接打字）", systemImage: "keyboard")
                     }
                     Button {
                         keyboardChooserOpen = false
-                        onToggleKeyboard()
+                        onChooseKeyboard(true)
                     } label: {
                         Label("电脑键盘（全尺寸布局）", systemImage: "keyboard.badge.ellipsis")
                     }
@@ -192,13 +194,22 @@ struct SessionBottomBar: View {
                     }
                 }
                 Section("画面") {
-                    Button {
-                        operationsOpen = false
-                    } label: {
-                        Label("旋转屏幕（主机暂未支持）", systemImage: "rotate.right")
-                            .foregroundStyle(.secondary)
+                    // 旋转屏幕：UU 的 Control.Panel.screenRotation。客户端旋转显示，
+                    // 触摸层同角度反解，所以点击仍然落在看到的位置。
+                    ForEach([0, 90, 180, 270], id: \.self) { degrees in
+                        Button {
+                            act("旋转屏幕") { rotationDegrees = degrees }
+                        } label: {
+                            HStack {
+                                Label("\(degrees)°", systemImage: degrees == 0
+                                      ? "rectangle" : "rotate.right")
+                                Spacer()
+                                if rotationDegrees == degrees {
+                                    Image(systemName: "checkmark")
+                                }
+                            }
+                        }
                     }
-                    .disabled(true)
 
                     ForEach(0..<Self.qualityOptions.count, id: \.self) { index in
                         Button {
