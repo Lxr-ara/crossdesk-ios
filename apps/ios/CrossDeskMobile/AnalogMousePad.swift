@@ -29,6 +29,9 @@ struct AnalogMousePad: View {
     @State private var rightDown = false
     @State private var scrollAccum: CGFloat = 0
     @State private var lastMovePoint: CGPoint?
+    // 首次启用时展示一次说明（对应 UU 的 Control.AnalogMouse.Guide）。
+    @AppStorage("analogMouseGuideShown") private var guideShown = false
+    @State private var guideVisible = false
 
     // Design units, straight from the asset catalogue.
     private let bodySize = CGSize(width: 108, height: 119)
@@ -52,6 +55,33 @@ struct AnalogMousePad: View {
                 .gesture(bodyDrag())
         }
         .allowsHitTesting(true)
+        .onAppear {
+            if !guideShown { guideVisible = true }
+        }
+        .sheet(isPresented: $guideVisible) {
+            NavigationStack {
+                VStack(alignment: .leading, spacing: 14) {
+                    Text("模拟鼠标").font(.title3.bold())
+                    Label("拖鼠身移动指针，慢推精细、快划跨屏", systemImage: "hand.draw")
+                    Label("按住「左」拖动 = 拖拽窗口或选中文本", systemImage: "cursorarrow.motionlines")
+                    Label("滚轮条上滑下滑 = 滚轮；按下不动 = 中键", systemImage: "computermouse")
+                    Label("按住左键拖面板 = 把面板挪开", systemImage: "arrow.up.and.down.and.arrow.left.and.right")
+                    Spacer()
+                }
+                .padding(20)
+                .navigationTitle("怎么用")
+                .navigationBarTitleDisplayMode(.inline)
+                .toolbar {
+                    ToolbarItem(placement: .topBarTrailing) {
+                        Button("知道了") {
+                            guideShown = true
+                            guideVisible = false
+                        }
+                    }
+                }
+            }
+            .presentationDetents([.height(300)])
+        }
     }
 
     // MARK: visual
