@@ -296,10 +296,31 @@ private final class RemoteAudioPlayer {
     }
 }
 
-final class RemoteSessionModel: NSObject, ObservableObject, CrossDeskRTCBridgeDelegate {
-    static let officialSignalHost = "api.crossdesk.cn"
-    static let officialSignalPort = "9099"
+struct SignalServerConfiguration: Equatable {
+    let host: String
+    let signalPort: Int
 
+    static let official = Self(host: "api.crossdesk.cn", signalPort: 9099)
+    private static let customServerKey = "crossdesk.mobile.custom-signal-server"
+
+    static func loadCustom() -> Self? {
+        guard let saved = UserDefaults.standard.dictionary(forKey: customServerKey),
+              let host = (saved["host"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines),
+              !host.isEmpty,
+              let port = saved["port"] as? Int, (1...65535).contains(port) else { return nil }
+        return Self(host: host, signalPort: port)
+    }
+
+    static func saveCustom(_ server: Self?) {
+        if let server {
+            UserDefaults.standard.set(["host": server.host, "port": server.signalPort], forKey: customServerKey)
+        } else {
+            UserDefaults.standard.removeObject(forKey: customServerKey)
+        }
+    }
+}
+
+final class RemoteSessionModel: NSObject, ObservableObject, CrossDeskRTCBridgeDelegate {
     private let privacyPreferences = PrivacyPreferences()
     @Published private(set) var hasNetworkConsent = PrivacyPreferences().hasNetworkConsent
     @Published private var privacyNotice = PrivacyNoticeState(
@@ -310,8 +331,7 @@ final class RemoteSessionModel: NSObject, ObservableObject, CrossDeskRTCBridgeDe
     @Published private(set) var thumbnailCleanupError: String?
     private var thumbnailGeneration = UUID()
 
-    @Published var signalHost = RemoteSessionModel.officialSignalHost
-    @Published var signalPort = RemoteSessionModel.officialSignalPort
+    @Published private(set) var customServer = SignalServerConfiguration.loadCustom()
     @Published var mouseControlMode = MouseControlMode.saved {
         didSet { mouseControlMode.save() }
     }
@@ -335,6 +355,7 @@ final class RemoteSessionModel: NSObject, ObservableObject, CrossDeskRTCBridgeDe
     @Published private(set) var isConnecting = false
     @Published private(set) var isConnected = false
     @Published private(set) var sessionVisible = false
+    var canStartConnection: Bool { !isConnecting && !isConnected && !sessionVisible }
     @Published private var videoFrame: RemoteVideoFrame?
     @Published private(set) var remoteCursorVisible = true
     @Published private(set) var remoteCursorShape = 0
@@ -404,13 +425,10 @@ final class RemoteSessionModel: NSObject, ObservableObject, CrossDeskRTCBridgeDe
     private static let presenceRefreshInterval: Duration = .seconds(30)
     private static let presenceMaxAge: Duration = .seconds(60)
 
-    private struct BridgeConfiguration: Equatable {
-        let host: String
-        let signalPort: Int
-    }
     /// Controller-side photo album; transport is the control stream.
     let photoGallery = PhotoGalleryStore()
     private var bridgeConfiguration: BridgeConfiguration?
+    private var bridgeConfiguration: SignalServerConfiguration?
 
     var pixelBuffer: CVPixelBuffer? { videoFrame?.pixelBuffer }
     var currentVideoFrameID: UInt64 { videoFrame?.id ?? 0 }
@@ -577,13 +595,11 @@ final class RemoteSessionModel: NSObject, ObservableObject, CrossDeskRTCBridgeDe
         }
     }
 
-    var usesOfficialServer: Bool {
-        signalHost == Self.officialSignalHost && signalPort == Self.officialSignalPort
-    }
-
-    func restoreOfficialServerConfiguration() {
-        signalHost = Self.officialSignalHost
-        signalPort = Self.officialSignalPort
+    func setCustomServer(_ server: SignalServerConfiguration?) {
+        guard server != customServer else { return }
+        SignalServerConfiguration.saveCustom(server)
+        customServer = server
+        configureBridge()
     }
 
     @discardableResult
@@ -592,14 +608,7 @@ final class RemoteSessionModel: NSObject, ObservableObject, CrossDeskRTCBridgeDe
             signalStatus = NSLocalizedString("等待隐私授权", comment: ""); signalHasError = false
             return false
         }
-        let host = signalHost.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard let signal = Int(signalPort),
-              (1...65535).contains(signal),
-              !host.isEmpty else {
-            signalStatus = NSLocalizedString("服务器配置无效", comment: ""); signalHasError = true
-            return false
-        }
-        let configuration = BridgeConfiguration(host: host, signalPort: signal)
+        let configuration = customServer ?? .official
         if bridgeConfiguration != configuration {
             bridgeConfiguration = configuration
             signalConnected = false
@@ -613,34 +622,38 @@ final class RemoteSessionModel: NSObject, ObservableObject, CrossDeskRTCBridgeDe
             signalStatus = NSLocalizedString("已连接服务器", comment: ""); signalHasError = false
         }
         bridge.setVideoAdaptationPolicy(videoAdaptationPolicy.bridgeValue)
-        bridge.configure(withSignalHost: host,
-                         signalPort: signal)
+        bridge.configure(withSignalHost: configuration.host,
+                         signalPort: configuration.signalPort)
         return true
     }
 
+    func connectionTarget(_ input: String) -> String? {
+        if input.range(of: "^[0-9]{9}$", options: .regularExpression) != nil { return input }
+        if let endpoint = CrossDeskRTCBridge.directEndpoint(input) { return endpoint }
+        connectionFailureMessage = NSLocalizedString("请输入设备 ID 或有效的 IP 地址", comment: "")
+        return nil
+    }
+
     func connect(password: String, rememberPassword: Bool) {
+        guard canStartConnection else { return }
         self.password = password
         pendingRememberPassword = rememberPassword
         connect()
     }
 
-    func connect() {
+    private func connect() {
         guard hasNetworkConsent else {
             showPrivacyNotice()
             return
         }
         connectionFailureMessage = nil
-        let identifier = remoteID.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !identifier.isEmpty else {
-            connectionStatus = NSLocalizedString("请输入远程设备 ID", comment: "")
-            return
-        }
+        guard let identifier = connectionTarget(remoteID.trimmingCharacters(in: .whitespacesAndNewlines)) else { return }
         remoteID = identifier
         guard configureBridge() else {
             connectionStatus = signalStatus
             return
         }
-        if isDeviceOnline(identifier) {
+        if identifier.contains(":") || isDeviceOnline(identifier) {
             beginRemoteConnection(identifier)
         } else {
             beginPresenceProbe(identifier)
@@ -713,7 +726,7 @@ final class RemoteSessionModel: NSObject, ObservableObject, CrossDeskRTCBridgeDe
     private func requestPresenceProbe(_ identifier: String) {
         guard hasNetworkConsent, signalConnected, presenceIsForeground else { return }
         // Older servers ignore subscribe=false and replace the watched list.
-        var identifiers = recentConnections.map(\.remoteID)
+        var identifiers = recentDeviceIDs
         if !identifiers.contains(identifier) { identifiers.append(identifier) }
         bridge.requestPresence(remoteIDs: identifiers, subscribe: false)
     }
@@ -873,10 +886,14 @@ final class RemoteSessionModel: NSObject, ObservableObject, CrossDeskRTCBridgeDe
         return updatedAt.duration(to: presenceClock.now) < Self.presenceMaxAge
     }
 
+    private var recentDeviceIDs: [String] {
+        recentConnections.map(\.remoteID).filter { !$0.contains(":") }
+    }
+
     private func refreshRecentConnectionPresence() {
         guard hasNetworkConsent, signalConnected, presenceIsForeground else { return }
         lastPresenceRefreshAt = presenceClock.now
-        bridge.requestPresence(remoteIDs: recentConnections.map(\.remoteID),
+        bridge.requestPresence(remoteIDs: recentDeviceIDs,
                                subscribe: true)
     }
 
@@ -974,6 +991,17 @@ final class RemoteSessionModel: NSObject, ObservableObject, CrossDeskRTCBridgeDe
         }
     }
 
+    func editRecentConnection(_ id: String, alias: String? = nil, groups: [String]? = nil) {
+        guard let index = recentConnections.firstIndex(where: { $0.id == id }) else { return }
+        if let alias {
+            recentConnections[index].alias = alias.trimmingCharacters(in: .whitespacesAndNewlines)
+        }
+        if let groups {
+            recentConnections[index].groups = Array(Set(groups)).sorted()
+        }
+        RecentConnectionStore.save(recentConnections)
+    }
+
     func removeRecentConnection(_ connection: RecentConnection) {
         recentConnections.removeAll { $0.remoteID == connection.remoteID }
         recentConnectionPresence.removeValue(forKey: connection.remoteID)
@@ -996,7 +1024,7 @@ final class RemoteSessionModel: NSObject, ObservableObject, CrossDeskRTCBridgeDe
 
         let previous = recentConnections.first { $0.remoteID == activeRemoteID }
         let title = activeDisplayName.isEmpty
-            ? (previous?.displayName ?? activeRemoteID)
+            ? (previous?.hostName ?? activeRemoteID)
             : activeDisplayName
         let connection = RecentConnection(
             remoteID: activeRemoteID,
@@ -1004,7 +1032,9 @@ final class RemoteSessionModel: NSObject, ObservableObject, CrossDeskRTCBridgeDe
             lastConnectedAt: Date(),
             remembersPassword: pendingRememberPassword,
             thumbnailFileName: previous?.thumbnailFileName,
-            platform: remoteHostInfoReceived ? remotePlatform : (previous?.platform ?? .unknown)
+            platform: remoteHostInfoReceived ? remotePlatform : (previous?.platform ?? .unknown),
+            alias: previous?.alias ?? "",
+            groups: previous?.groups ?? []
         )
         recentConnections.removeAll { $0.remoteID == activeRemoteID }
         recentConnections.insert(connection, at: 0)
@@ -1365,7 +1395,9 @@ final class RemoteSessionModel: NSObject, ObservableObject, CrossDeskRTCBridgeDe
         case 2: connectionStatus = NSLocalizedString("正在收集 ICE 候选", comment: "")
         case 3: finishConnection(withError: NSLocalizedString("网络连接已中断，请重新连接。", comment: ""))
         case 4:
-            finishConnection(withError: NSLocalizedString("P2P/TURN 建链失败，请检查网络后重试。", comment: ""))
+            let message = activeRemoteID.contains(":") ? NSLocalizedString("IP 直连失败，请检查电脑的直连地址和网络。", comment: "") :
+                NSLocalizedString("P2P/TURN 建链失败，请检查网络后重试。", comment: "")
+            finishConnection(withError: message)
         case 5:
             finishConnection(withError: NSLocalizedString("远程连接已结束。", comment: ""))
         case 6:
@@ -1432,7 +1464,7 @@ final class RemoteSessionModel: NSObject, ObservableObject, CrossDeskRTCBridgeDe
             awaitingPresenceSnapshot = false
         }
         let now = presenceClock.now
-        let watched = Set(recentConnections.map(\.remoteID))
+        let watched = Set(recentDeviceIDs)
         for (remoteID, online) in presence
             where watched.contains(remoteID) || pendingPresenceRemoteID == remoteID {
             updated[remoteID] = online.boolValue
@@ -1629,7 +1661,7 @@ final class RemoteSessionModel: NSObject, ObservableObject, CrossDeskRTCBridgeDe
 
     func rtcBridge(_ bridge: CrossDeskRTCBridge,
                    didUpdateNetworkStats stats: CrossDeskNetworkStats,
-                   localDecoder: String) {
+                   localDecoder: String, localEndpoint: String, remoteEndpoint: String) {
         guard hasNetworkConsent, isConnected else { return }
         func traffic(_ value: CrossDeskTrafficStats) -> RemoteTrafficStatistics {
             RemoteTrafficStatistics(inboundBitrate: value.inboundBitrate,
@@ -1646,7 +1678,7 @@ final class RemoteSessionModel: NSObject, ObservableObject, CrossDeskRTCBridgeDe
             video: traffic(stats.video), audio: traffic(stats.audio),
             data: traffic(stats.data), total: traffic(stats.total), mode: mode,
             srtpActive: stats.srtpActive.boolValue, rttMilliseconds: stats.rttMilliseconds,
-            localVideoDecoder: localDecoder
+            localVideoDecoder: localDecoder, localEndpoint: localEndpoint, remoteEndpoint: remoteEndpoint
         ), at: ProcessInfo.processInfo.systemUptime)
     }
 
