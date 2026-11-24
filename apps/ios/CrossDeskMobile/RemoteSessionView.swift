@@ -551,6 +551,17 @@ struct RemoteSessionView: View {
                             SessionBottomBar(
                                 session: session,
                                 keyboardVisible: $keyboardInputVisible,
+                                onToggleKeyboard: {
+                                    // 每次从底栏进键盘都回到真正的系统键盘，避免
+                                    // 停在上次的快捷键/电脑键盘页。
+                                    if keyboardInputVisible {
+                                        keyboardInputVisible = false
+                                    } else {
+                                        keyboardMode = .system
+                                        waitingForSystemKeyboard = true
+                                        keyboardInputVisible = true
+                                    }
+                                },
                                 shortcutsVisible: $shortcutManagerVisible,
                                 showsFiles: { showingFileImporter = true },
                                 showsPhotoAlbum: { showingPhotoGallery = true },
@@ -1889,10 +1900,11 @@ private struct RemoteCursorGlyph: View {
     // 箭头/手/复制/帮助是「指尖」热区（包围盒左上角），十字/缩放/移动/等待/文本
     // 是「中心」热区。旧实现一律用 tile 中心，等于把视觉指尖错开半个 tile，
     // 点击落点和看到的箭头差了 3~4 pt。
+    /// `.position` 定位的是视图中心，所以把热点换算成「中心偏移」再返回：
+    /// 中心 = 目标点 + (tile/2 - 热点)。与桌面端「左上角放在 目标点 - 热点」等价。
     static func hotspotOffset(for shape: Int, size: CGFloat) -> CGPoint {
-        // 数值来自 libs/wire/include/remote_cursor_metrics.h（与桌面同一张表），
-        // 由 scripts/generate_cursor_metrics.py 生成，不要在这里写死。
-        CursorMetrics.hotspot(for: shape, tile: size)
+        let hotspot = CursorMetrics.hotspot(for: shape, tile: size)
+        return CGPoint(x: size / 2 - hotspot.x, y: size / 2 - hotspot.y)
     }
 
 
