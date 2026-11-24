@@ -13,6 +13,32 @@ enum RemoteVideoGeometry {
                       height: max(0, maxY - minY))
     }
 
+    /// 旋转后的视频尺寸：奇数个 90° 时宽高互换。
+    static func rotatedVideoSize(_ videoSize: CGSize, quarterTurns: Int) -> CGSize {
+        quarterTurns % 2 == 0 ? videoSize
+            : CGSize(width: videoSize.height, height: videoSize.width)
+    }
+
+    /// 屏幕坐标里的归一化点 -> 远端原始归一化点（把旋转反解掉）。
+    static func unrotate(_ q: (Float, Float), quarterTurns: Int) -> (Float, Float) {
+        switch ((quarterTurns % 4) + 4) % 4 {
+        case 1: return (q.1, 1 - q.0)
+        case 2: return (1 - q.0, 1 - q.1)
+        case 3: return (1 - q.1, q.0)
+        default: return q
+        }
+    }
+
+    /// 远端原始归一化点 -> 屏幕坐标里的归一化点（画光标时用）。
+    static func rotate(_ p: (Float, Float), quarterTurns: Int) -> (Float, Float) {
+        switch ((quarterTurns % 4) + 4) % 4 {
+        case 1: return (1 - p.1, p.0)
+        case 2: return (1 - p.0, 1 - p.1)
+        case 3: return (p.1, 1 - p.0)
+        default: return p
+        }
+    }
+
     static func aspectFitRect(containerSize: CGSize,
                               videoSize: CGSize) -> CGRect? {
         guard containerSize.width > 0, containerSize.height > 0,
@@ -70,6 +96,7 @@ struct RemoteTouchInputView: UIViewRepresentable {
     let remoteCursorPositionRevision: UInt64
     let viewportScale: CGFloat
     let viewportOffset: CGSize
+    let quarterTurns: Int
     let viewportChanged: (CGFloat, CGSize) -> Void
     let move: (Float, Float) -> Void
     let leftDown: (Float, Float) -> Void
@@ -85,6 +112,7 @@ struct RemoteTouchInputView: UIViewRepresentable {
         view.mouseInput = mouseInput
         view.videoSize = videoSize
         view.controlMode = controlMode
+        view.quarterTurns = quarterTurns
         view.setViewport(scale: viewportScale, offset: viewportOffset)
         view.onViewportChanged = viewportChanged
         view.onMove = move
@@ -142,6 +170,7 @@ final class RemoteTouchSurface: UIView, UIGestureRecognizerDelegate {
     private var heldDragPoint: (Float, Float)?
     private var heldDragLastLocation: CGPoint?
     private var hoverLastLocation: CGPoint?
+    var quarterTurns: Int = 0
     private var viewportScale: CGFloat = 1
     private var viewportOffset = CGSize.zero
     private var edgePanned = false
@@ -671,22 +700,24 @@ final class RemoteTouchSurface: UIView, UIGestureRecognizerDelegate {
 
     private func normalized(_ point: CGPoint) -> (Float, Float)? {
         guard let renderRect = renderRect(), renderRect.contains(point) else { return nil }
-        return (Float((point.x - renderRect.minX) / renderRect.width),
-                Float((point.y - renderRect.minY) / renderRect.height))
+        let q = (Float((point.x - renderRect.minX) / renderRect.width),
+                 Float((point.y - renderRect.minY) / renderRect.height))
+        return RemoteVideoGeometry.unrotate(q, quarterTurns: quarterTurns)
     }
 
     private func renderRect() -> CGRect? {
         RemoteVideoGeometry.transformedRect(
             containerSize: bounds.size,
-            videoSize: videoSize,
+            videoSize: RemoteVideoGeometry.rotatedVideoSize(videoSize, quarterTurns: quarterTurns),
             scale: viewportScale,
             offset: viewportOffset
         )
     }
 
     private func baseRenderRect() -> CGRect? {
-        RemoteVideoGeometry.aspectFitRect(containerSize: bounds.size,
-                                          videoSize: videoSize)
+        RemoteVideoGeometry.aspectFitRect(
+            containerSize: bounds.size,
+            videoSize: RemoteVideoGeometry.rotatedVideoSize(videoSize, quarterTurns: quarterTurns))
     }
 
     private func constrainedViewportOffset(_ offset: CGSize,
