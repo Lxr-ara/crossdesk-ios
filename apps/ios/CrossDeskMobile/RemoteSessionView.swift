@@ -39,11 +39,23 @@ private struct RemoteViewportState: Equatable {
     var offset = CGSize.zero
 }
 
+private extension EnvironmentValues {
+    var hasVerticalSystemBar: Bool {
+        // The vertical bar environment value ships with the iOS 27.1 SDK.
+        #if canImport(SwiftUI, _version: 8.0.85)
+        if #available(iOS 27.1, *) { return toolbarVerticalEdge != nil }
+        #endif
+        return false
+    }
+}
+
 struct RemoteSessionView: View {
     @ObservedObject var session: RemoteSessionModel
     @Environment(\.scenePhase) private var scenePhase
+    @Environment(\.hasVerticalSystemBar) private var hasVerticalSystemBar
     @State private var mouseInput = RemoteMouseInput()
-    @State private var virtualMouseVisible = false
+    @State private var virtualMouseVisible = true
+    @State private var virtualMouseCenter: CGPoint?
     @StateObject private var systemKeyboardContext = RemoteKeyboardInputContext()
     @StateObject private var keyboardGeometry = RemoteKeyboardGeometry()
     @StateObject private var shortcutStore = RemoteShortcutStore()
@@ -120,6 +132,7 @@ struct RemoteSessionView: View {
 
                     RemoteTouchInputView(
                         mouseInput: mouseInput,
+                        keyboardGeometry: keyboardInputVisible ? keyboardGeometry : nil,
                         videoSize: session.displayGeometrySize,
                         controlMode: session.mouseControlMode,
                         remoteCursorPosition: session.remoteCursorPosition,
@@ -166,8 +179,9 @@ struct RemoteSessionView: View {
                 .frame(width: proxy.size.width, height: proxy.size.height)
                 .clipped()
             }
-            // Fit video and input to the same unobscured area. Only the black
-            // background extends beneath the home indicator and display cutout.
+            // Give the video, cursor and touch surface the same full window on
+            // vertical-bar layouts. Floating controls retain their own safe area.
+            .ignoresSafeArea(.container, edges: hasVerticalSystemBar ? .all : [])
             .ignoresSafeArea(.keyboard)
             .transaction { transaction in
                 transaction.animation = nil
@@ -219,6 +233,7 @@ struct RemoteSessionView: View {
                     .zIndex(50)
             }
         }
+        .statusBarHidden(hasVerticalSystemBar)
         .alert(NSLocalizedString("升级提示", comment: ""), isPresented: Binding(
             get: { !session.privacyScreen.unlockNotice && session.remoteUpdateMessage != nil },
             set: { if !$0 && !session.privacyScreen.unlockNotice { session.dismissRemoteUpdate() } }
@@ -259,7 +274,6 @@ struct RemoteSessionView: View {
         .onDisappear {
             mouseInput.releaseAll()
             mouseInput.send = nil
-            virtualMouseVisible = false
             keyboardInputVisible = false
             viewport = RemoteViewportState()
             cursorPosition = nil
@@ -462,11 +476,6 @@ struct RemoteSessionView: View {
                                  ? 380 : min(340, max(280, containerSize.width - 160)))
 
             ZStack(alignment: .topLeading) {
-                if virtualMouseVisible && !statusMenuVisible && session.pixelBuffer != nil {
-                    VirtualMouseBar(input: mouseInput)
-                        .frame(width: 140, height: 48)
-                        .position(virtualMouseCenter(orbCenter: orbCenter, in: containerSize))
-                }
                 if statusMenuVisible {
                     Color.clear
                         .contentShape(Rectangle())
@@ -475,6 +484,12 @@ struct RemoteSessionView: View {
                                 statusMenuVisible = false
                             }
                         }
+                }
+                if virtualMouseVisible, session.pixelBuffer != nil {
+                    VirtualMouseBar(input: mouseInput,
+                                    center: boundedMouseCenter(virtualMouseCenter, in: containerSize),
+                                    constrain: { boundedMouseCenter($0, in: containerSize) },
+                                    moved: { self.virtualMouseCenter = $0 })
                 }
 
                 FloatingMenuLayout(orbCenter: orbCenter, panelWidth: panelWidth) {
@@ -645,12 +660,12 @@ struct RemoteSessionView: View {
             let keyboardSize = keyboardPanelSize(in: size)
             let center = keyboardCenter(in: size, panelSize: keyboardSize)
             let keyboardRect = CGRect(x: center.x - keyboardSize.width / 2, y: center.y - keyboardSize.height / 2, width: keyboardSize.width, height: keyboardSize.height)
-            if keyboardRect.intersects(CGRect(x: x - halfWidth, y: y - halfHeight, width: 140, height: 48)) {
+            if keyboardRect.intersects(CGRect(origin: CGPoint(x: x - halfWidth, y: y - halfHeight), size: VirtualMouseBar.size)) {
                 y = keyboardRect.minY - 6 - halfHeight
                 if y - halfHeight < 8 { y = keyboardRect.maxY + 6 + halfHeight }
             }
         }
-        return CGPoint(x: x, y: min(max(y, halfHeight + 8), max(halfHeight + 8, size.height - halfHeight - 8)))
+        return CGPoint(x: x, y: min(max(y, halfHeight + 8), maxY))
     }
 
     private var dockedKeyboard: some View {
@@ -665,6 +680,7 @@ struct RemoteSessionView: View {
                                              windowSize: windowSize)
             remoteKeyboardPanel(bottomInset: proxy.safeAreaInsets.bottom)
                 .frame(width: panelSize.width, height: panelSize.height)
+                .background(RemoteKeyboardPanelFrame(geometry: keyboardGeometry))
                 .position(keyboardCenter(in: containerSize, panelSize: panelSize))
                 .transaction { transaction in
                     transaction.animation = nil
@@ -1301,6 +1317,7 @@ private struct FloatingSessionMenu: View {
     let releaseMouse: () -> Void
     private enum Page { case controls, videoSettings, networkStats }
     @State private var page: Page = .controls
+    @State private var endpointsExpanded = false
     @State private var displayedNetworkSnapshot: RemoteNetworkSnapshot
     @State private var displayedFrameSize: CGSize
     let showKeyboard: () -> Void
@@ -1370,6 +1387,9 @@ private struct FloatingSessionMenu: View {
             // when the menu closes. Rendering only reads the sampled values.
             while !Task.isCancelled {
                 displayedNetworkSnapshot = session.networkSnapshot
+                if displayedNetworkSnapshot.report?.hasDirectEndpoints != true {
+                    endpointsExpanded = false
+                }
                 displayedFrameSize = session.frameSize
                 do {
                     try await Task.sleep(nanoseconds: 1_000_000_000)
@@ -1436,7 +1456,8 @@ private struct FloatingSessionMenu: View {
             FloatingVideoSettings(session: session)
         } else if page == .networkStats {
             FloatingNetworkStatistics(snapshot: displayedNetworkSnapshot,
-                                      frameSize: displayedFrameSize)
+                                      frameSize: displayedFrameSize,
+                                      endpointsExpanded: $endpointsExpanded)
         } else {
             VStack(spacing: 9) {
                 LazyVGrid(columns: columns, spacing: 7) {
@@ -1495,6 +1516,7 @@ private struct FloatingSessionMenu: View {
                                           symbol: "folder",
                                           action: showRemoteFiles)
                     FloatingControlButton(title: NSLocalizedString("网络状态", comment: ""), symbol: "chart.bar.xaxis") {
+                        endpointsExpanded = false
                         page = .networkStats
                     }
                     if session.remotePlatform == .windows {
@@ -1609,6 +1631,7 @@ private struct ScrollingCodecName: View {
 private struct FloatingNetworkStatistics: View {
     let snapshot: RemoteNetworkSnapshot
     let frameSize: CGSize
+    @Binding var endpointsExpanded: Bool
 
     var body: some View {
         VStack(spacing: 10) {
@@ -1631,7 +1654,26 @@ private struct FloatingNetworkStatistics: View {
                 detail(NSLocalizedString("分辨率", comment: ""), value: resolution)
                 detail(NSLocalizedString("画面延时", comment: ""), value: RemoteNetworkSnapshot.latency(snapshot.videoLatencyMilliseconds))
                 detail(NSLocalizedString("连接延时（RTT）", comment: ""), value: RemoteNetworkSnapshot.latency(snapshot.rttMilliseconds))
-                detail(NSLocalizedString("连接方式", comment: ""), value: snapshot.connectionMode)
+                if let report = snapshot.report, report.hasDirectEndpoints {
+                    Button {
+                        endpointsExpanded.toggle()
+                    } label: {
+                        HStack(spacing: 4) {
+                            Text(NSLocalizedString("连接方式", comment: "")).foregroundStyle(.secondary)
+                            Spacer(minLength: 8)
+                            Text(snapshot.connectionMode)
+                            Image(systemName: endpointsExpanded ? "chevron.down" : "chevron.right")
+                                .font(.caption2).accessibilityHidden(true)
+                        }
+                        .contentShape(Rectangle())
+                    }
+                    if endpointsExpanded {
+                        detail(NSLocalizedString("本端地址", comment: ""), value: report.localEndpoint)
+                        detail(NSLocalizedString("对端地址", comment: ""), value: report.remoteEndpoint)
+                    }
+                } else {
+                    detail(NSLocalizedString("连接方式", comment: ""), value: snapshot.connectionMode)
+                }
                 HStack {
                     Text(NSLocalizedString("媒体加密", comment: ""))
                         .foregroundStyle(.secondary)
