@@ -31,6 +31,9 @@
 		E9C3D4E5F607182930415A64 /* BarMetrics.generated.swift in Sources */ = {isa = PBXBuildFile; fileRef = E9C3D4E5F607182930415A63 /* BarMetrics.generated.swift */; };
 		E9C3D4E5F607182930415A62 /* SessionBottomBar.swift in Sources */ = {isa = PBXBuildFile; fileRef = E9C3D4E5F607182930415A61 /* SessionBottomBar.swift */; };
 		F1D2E3F405162738490A5B72 /* CombineKeysView.swift in Sources */ = {isa = PBXBuildFile; fileRef = F1D2E3F405162738490A5B71 /* CombineKeysView.swift */; };
+		B3C4D5E60718293A4B5C6D72 /* cursor in Resources */ = {isa = PBXBuildFile; fileRef = B3C4D5E60718293A4B5C6D71 /* cursor */; };
+		A2B3C4D5061728394A5B6C74 /* CursorArt.generated.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2B3C4D5061728394A5B6C73 /* CursorArt.generated.swift */; };
+		A2B3C4D5061728394A5B6C72 /* VectorCursor.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2B3C4D5061728394A5B6C71 /* VectorCursor.swift */; };
 		100000000000000000000015 /* ../../../PRIVACY.md in Resources */ = {isa = PBXBuildFile; fileRef = 200000000000000000000015 /* ../../../PRIVACY.md */; };
 		100000000000000000000016 /* RemoteVideoSettings.swift in Sources */ = {isa = PBXBuildFile; fileRef = 200000000000000000000016 /* RemoteVideoSettings.swift */; };
 		100000000000000000000017 /* RemoteNetworkStatistics.swift in Sources */ = {isa = PBXBuildFile; fileRef = 200000000000000000000017 /* RemoteNetworkStatistics.swift */; };
@@ -99,6 +102,9 @@
 		E9C3D4E5F607182930415A63 /* BarMetrics.generated.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BarMetrics.generated.swift; sourceTree = "<group>"; };
 		E9C3D4E5F607182930415A61 /* SessionBottomBar.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SessionBottomBar.swift; sourceTree = "<group>"; };
 		F1D2E3F405162738490A5B71 /* CombineKeysView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CombineKeysView.swift; sourceTree = "<group>"; };
+		A2B3C4D5061728394A5B6C73 /* CursorArt.generated.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CursorArt.generated.swift; sourceTree = "<group>"; };
+		A2B3C4D5061728394A5B6C71 /* VectorCursor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VectorCursor.swift; sourceTree = "<group>"; };
+		B3C4D5E60718293A4B5C6D71 /* cursor */ = {isa = PBXFileReference; lastKnownFileType = folder; path = Resources/cursor; sourceTree = "<group>"; };
 		200000000000000000000015 /* ../../../PRIVACY.md */ = {isa = PBXFileReference; lastKnownFileType = net.daringfireball.markdown; path = ../../../PRIVACY.md; sourceTree = "<group>"; };
 		200000000000000000000016 /* RemoteVideoSettings.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RemoteVideoSettings.swift; sourceTree = "<group>"; };
 		200000000000000000000017 /* RemoteNetworkStatistics.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RemoteNetworkStatistics.swift; sourceTree = "<group>"; };
@@ -165,6 +171,9 @@
 				E9C3D4E5F607182930415A63 /* BarMetrics.generated.swift */,
 				E9C3D4E5F607182930415A61 /* SessionBottomBar.swift */,
 				F1D2E3F405162738490A5B71 /* CombineKeysView.swift */,
+				A2B3C4D5061728394A5B6C73 /* CursorArt.generated.swift */,
+				B3C4D5E60718293A4B5C6D71 /* cursor */,
+				A2B3C4D5061728394A5B6C71 /* VectorCursor.swift */,
 				200000000000000000000013 /* ThumbnailFileStore.swift */,
 				200000000000000000000012 /* PrivacyPreferences.swift */,
 				200000000000000000000002 /* RemoteSessionModel.swift */,
@@ -311,6 +320,7 @@
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				B3C4D5E60718293A4B5C6D72 /* cursor in Resources */,
 				100000000000000000000008 /* Assets.xcassets in Resources */,
 				10000000000000000000000A /* Resources/ThirdPartyLicenses.json in Resources */,
 				4870B14C46F4C4B8F10FEF08 /* InfoPlist.strings in Resources */,
@@ -406,6 +416,8 @@
 				E9C3D4E5F607182930415A64 /* BarMetrics.generated.swift in Sources */,
 				E9C3D4E5F607182930415A62 /* SessionBottomBar.swift in Sources */,
 				F1D2E3F405162738490A5B72 /* CombineKeysView.swift in Sources */,
+				A2B3C4D5061728394A5B6C74 /* CursorArt.generated.swift in Sources */,
+				A2B3C4D5061728394A5B6C72 /* VectorCursor.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
