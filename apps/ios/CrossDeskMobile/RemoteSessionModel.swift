@@ -427,7 +427,6 @@ final class RemoteSessionModel: NSObject, ObservableObject, CrossDeskRTCBridgeDe
 
     /// Controller-side photo album; transport is the control stream.
     let photoGallery = PhotoGalleryStore()
-    private var bridgeConfiguration: BridgeConfiguration?
     private var bridgeConfiguration: SignalServerConfiguration?
 
     var pixelBuffer: CVPixelBuffer? { videoFrame?.pixelBuffer }

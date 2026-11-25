@@ -639,6 +639,14 @@ struct RemoteSessionView: View {
         }
     }
 
+    /// 把浮动控件的中心夹在画面内，留出 8pt 边距（1.7.7 的命名）。
+    private func boundedMouseCenter(_ center: CGPoint?, in size: CGSize) -> CGPoint {
+        guard let center else { return CGPoint(x: size.width / 2, y: size.height / 2) }
+        let margin: CGFloat = 8
+        return CGPoint(x: min(max(center.x, margin), max(size.width - margin, margin)),
+                       y: min(max(center.y, margin), max(size.height - margin, margin)))
+    }
+
     private func virtualMouseCenter(orbCenter: CGPoint, in size: CGSize) -> CGPoint {
         let halfWidth: CGFloat = 70
         let halfHeight: CGFloat = 24
