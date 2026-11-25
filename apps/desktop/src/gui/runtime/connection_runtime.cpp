@@ -18,6 +18,7 @@
 #include "screen_lock.h"
 #include "runtime/device_presence_request.h"
 #include "runtime/gui_runtime.h"
+#include "remote_input_gate.h"
 
 namespace crossdesk {
 
@@ -724,7 +725,18 @@ int GuiRuntime::ConnectTo(const std::string& remote_id, const char* password,
         props->tab_opened_ = !background;
         props->control_mouse_ = !background;
         props->enable_mouse_control_ = !background;
+  SetRemoteInputAllowed(!background);
         props->audio_capture_button_pressed_ = !background;
+        // The stored UU tier seeds this session's live settings, so the first
+        // video_settings message (sent once the host advertises support)
+        // already carries the tier the user picked last time.
+        {
+          const auto& tier =
+              video_quality::Spec(config_center_->GetVideoQualityPreset());
+          props->video_settings_ = {tier.quality, tier.frame_rate,
+                                    tier.preference, 0, false, tier.preset};
+          props->applied_video_settings_ = props->video_settings_;
+        }
         memcpy(&props->params_, &params_, sizeof(MiniRtcParams));
         props->params_.user_id = props->local_id_.c_str();
         props->peer_events_ = std::make_shared<PeerEventHandler>(*this);

@@ -23,6 +23,7 @@
 #include "unattended_config.h"
 #include "platform/windows/input/windows_input_injector.h"
 #include "platform/windows/input/windows_text_input.h"
+#include "remote_input_gate.h"
 #endif
 
 namespace crossdesk {
@@ -169,6 +170,8 @@ void KeyboardController::SendHeartbeat(bool force) {
 
 int KeyboardController::SendKeyCommand(int key_code, bool is_down,
                                        uint32_t scan_code, bool extended) {
+  if (!RemoteInputAllowed()) return 0;
+
   if (scan_code == 0) {
     PopulateWindowsKeyMetadataFromVk(key_code, &scan_code, &extended);
   }

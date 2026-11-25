@@ -10,6 +10,7 @@
 #include "windows_input_injector.h"
 #include "windows_input_marker.h"
 #include "windows_thread_dpi.h"
+#include "remote_input_gate.h"
 
 namespace crossdesk {
 
@@ -77,6 +78,10 @@ int PlatformMouseController::SendMouseCommand(RemoteAction remote_action,
   const auto display = display_info_list_[display_index];
   geometry_lock.unlock();
 
+  // 观看模式：主机选择只看不动，远端输入到这里就丢弃（也不记账按下的键，
+  // 否则恢复控制时会残留一个「按住」状态）。
+  if (!RemoteInputAllowed()) return 0;
+
   INPUT ip = {0};
   ScopedWindowsPhysicalCoordinates physical_coordinates;
 
@@ -90,6 +95,27 @@ int PlatformMouseController::SendMouseCommand(RemoteAction remote_action,
                     (display.height - 1)) + display.top;
 
   switch (remote_action.m.flag) {
+    case MouseFlag::relative_move:
+      // Game-mouse motion: x/y are pixel deltas, never normalized or scaled by
+      // the display rectangle.
+      {
+        INPUT relative{};
+        relative.type = INPUT_MOUSE;
+        relative.mi.dx = static_cast<LONG>(std::lround(remote_action.m.x));
+        relative.mi.dy = static_cast<LONG>(std::lround(remote_action.m.y));
+        if (!relative.mi.dx && !relative.mi.dy) return 0;
+        relative.mi.dwFlags = MOUSEEVENTF_MOVE;
+        relative.mi.dwExtraInfo = kInjectedMouseInputMarker;
+        const UINT sent = SendInputOnUserDesktop(relative);
+        if (sent != 1) {
+          const DWORD error = GetLastError();
+          LOG_WARN("SendInput failed for relative mouse dx={} dy={}, err={}",
+                   relative.mi.dx, relative.mi.dy, error);
+          SetLastError(error);
+          return -1;
+        }
+        return 0;
+      }
     case MouseFlag::left_down:
       ip.mi.dwFlags = MOUSEEVENTF_LEFTDOWN;
       break;

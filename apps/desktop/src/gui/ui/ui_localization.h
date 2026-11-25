@@ -124,6 +124,13 @@ inline int ApplyMainWindowStrings(
       Text(localization::local_id_copied_to_clipboard[language]));
   strings.set_connect(Text(localization::connect[language]));
   strings.set_settings(Text(localization::settings[language]));
+  strings.set_photo_album(
+      Text(localization::Literal("照片相册", language)));
+  strings.set_mouse_mode(Text(localization::Literal("鼠标模式", language)));
+  strings.set_mouse_mode_smart(Text(localization::Literal("智能鼠标", language)));
+  strings.set_mouse_mode_game(Text(localization::Literal("游戏鼠标", language)));
+  strings.set_mouse_mode_emulation(Text(localization::Literal("仿真鼠标", language)));
+  strings.set_game_mouse_speed(Text(localization::Literal("游戏鼠标速度", language)));
   strings.set_about(Text(localization::about[language]));
   strings.set_sponsorship_title(Text(localization::sponsorship_title[language]));
   strings.set_sponsorship_message(Text(localization::sponsorship_message[language]));
@@ -246,6 +253,85 @@ inline int ApplyMainWindowStrings(
   return language;
 }
 
+// The file-transfer window carries its labels as window properties instead of a
+// Slint global, so the transfer-bar controls localise through the same
+// catalog keys their .slint fallbacks use.
+template <typename Window>
+inline int ApplyFileBrowserStrings(
+    const slint::ComponentHandle<Window>& window, int language_index) {
+  const int language =
+      localization::detail::ClampLanguageIndex(language_index);
+  auto& strings = *window;
+  strings.set_pause_text(Text(localization::Literal("暂停", language)));
+  strings.set_resume_text(Text(localization::Literal("继续", language)));
+  strings.set_rate_limit_text(Text(localization::Literal("限速", language)));
+  strings.set_rate_limit_unlimited_text(
+      Text(localization::Literal("不限速", language)));
+  strings.set_overwrite_policy_text(
+      Text(localization::Literal("覆盖策略", language)));
+  strings.set_auto_rename_text(
+      Text(localization::Literal("自动重命名", language)));
+  strings.set_overwrite_text(Text(localization::Literal("覆盖", language)));
+  strings.set_skip_text(Text(localization::Literal("跳过", language)));
+  // The third conflict-policy choice reads 每次询问, not 跳过: value 0 asks the
+  // conflict dialog, so the label has to say that. `skip-text` stays set for the
+  // older property, the combo just no longer uses it.
+  strings.set_ask_every_time_text(
+      Text(localization::Literal("每次询问", language)));
+  // Task list: queue-level controls, per-item actions, sortable column headers
+  // and the UU batch summary.
+  strings.set_start_all_text(Text(localization::Literal("全部开始", language)));
+  strings.set_pause_all_text(Text(localization::Literal("全部暂停", language)));
+  strings.set_resume_all_text(Text(localization::Literal("全部继续", language)));
+  strings.set_clear_all_text(Text(localization::Literal("全部清除", language)));
+  strings.set_clear_completed_text(
+      Text(localization::Literal("清除已完成", language)));
+  strings.set_retry_text(Text(localization::Literal("重试", language)));
+  strings.set_sort_name_text(Text(localization::Literal("按名称", language)));
+  strings.set_sort_size_text(Text(localization::Literal("按大小", language)));
+  strings.set_sort_time_text(Text(localization::Literal("按时间", language)));
+  strings.set_completed_text(Text(localization::Literal("完成", language)));
+  strings.set_failed_text(Text(localization::Literal("失败", language)));
+  strings.set_active_text(Text(localization::Literal("进行中", language)));
+  strings.set_queued_text(Text(localization::Literal("排队中", language)));
+  strings.set_paused_text(Text(localization::Literal("已暂停", language)));
+  strings.set_open_save_folder_text(
+      Text(localization::Literal("打开所在文件夹", language)));
+  strings.set_change_save_path_text(
+      Text(localization::Literal("修改保存路径", language)));
+  // "共 {n} 项" is split at its placeholder so Slint only fills in the count and
+  // every language keeps its own word order around the number.
+  const auto& total = localization::Literal("共 {n} 项", language);
+  const auto split = total.find("{n}");
+  strings.set_batch_total_prefix(Text(total.substr(0, split)));
+  strings.set_batch_total_suffix(
+      Text(split == std::string::npos ? "" : total.substr(split + 3)));
+  // File-management menu, dialog and button wording. Ten languages, one source:
+  // every label the context menu and the four dialogs show comes from here, so a
+  // new entry cannot land in the zh/en fallback the older properties still use.
+  ui::BrowserMenuText menu{};
+  menu.open_text = Text(localization::Literal("打开", language));
+  menu.reveal_text = Text(localization::Literal("在资源管理器中显示", language));
+  menu.rename_text = Text(localization::Literal("重命名", language));
+  menu.delete_text = Text(localization::Literal("删除", language));
+  menu.new_folder_text = Text(localization::Literal("新建文件夹", language));
+  menu.refresh_text = Text(localization::Literal("刷新", language));
+  menu.properties_text = Text(localization::Literal("属性", language));
+  menu.name_text = Text(localization::Literal("名称", language));
+  menu.size_text = Text(localization::Literal("大小", language));
+  menu.modified_text = Text(localization::Literal("修改时间", language));
+  menu.directory_text = Text(localization::Literal("是否目录", language));
+  menu.yes_text = Text(localization::Literal("是", language));
+  menu.no_text = Text(localization::Literal("否", language));
+  menu.ok_text = Text(localization::Literal("确定", language));
+  menu.cancel_text = Text(localization::cancel[language]);
+  // 清理临时文件 labels both the toolbar button and the empty-space menu entry;
+  // the confirmation reuses 确定 / 取消 from the same struct.
+  menu.temp_clear_text = Text(localization::Literal("清理临时文件", language));
+  window->set_menu(menu);
+  return language;
+}
+
 template <typename Window>
 inline int ApplyStreamWindowStrings(
     const slint::ComponentHandle<Window>& window, int language_index) {
@@ -281,6 +367,17 @@ inline int ApplyStreamWindowStrings(
   strings.set_quality_medium(
       Text(localization::video_quality_medium[language]));
   strings.set_quality_high(Text(localization::video_quality_high[language]));
+  // UU 画质三档与自动降级提示。
+  strings.set_quality_preset(
+      Text(localization::video_quality_tier[language]));
+  strings.set_quality_preset_smooth(
+      Text(localization::video_quality_tier_smooth[language]));
+  strings.set_quality_preset_hd(
+      Text(localization::video_quality_tier_hd[language]));
+  strings.set_quality_preset_uhd(
+      Text(localization::video_quality_tier_uhd[language]));
+  strings.set_quality_preset_degrade_toast(
+      Text(localization::video_quality_degrade_toast[language]));
   strings.set_priority_frame_rate(
       Text(localization::video_priority_frame_rate[language]));
   strings.set_priority_quality(
@@ -290,6 +387,8 @@ inline int ApplyStreamWindowStrings(
   strings.set_audio(Text(localization::audio_capture[language]));
   strings.set_mute(Text(localization::mute[language]));
   strings.set_select_file(Text(localization::select_file[language]));
+  strings.set_photo_gallery(
+      Text(localization::Literal("照片相册", language)));
   strings.set_show_stats(
       Text(localization::show_net_traffic_stats[language]));
   strings.set_hide_stats(

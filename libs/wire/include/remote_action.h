@@ -14,6 +14,7 @@
 
 #include <remote_cursor_shape.h>
 #include <display_resolution.h>
+#include <video_quality_preset.h>
 
 namespace crossdesk {
 
@@ -48,6 +49,10 @@ enum MouseFlag {
   middle_up,
   wheel_vertical,
   wheel_horizontal,
+  // Game mouse: x/y carry pixel deltas instead of normalized coordinates.
+  // Older hosts ignore the unknown flag, so a mixed-version pair stays on the
+  // absolute path until both ends advertise support.
+  relative_move,
 };
 
 enum KeyFlag { key_down = 0, key_up };
@@ -152,6 +157,8 @@ struct HostInfo {
   bool supports_file_browser;
   bool supports_file_clipboard;
   int file_clipboard_version;
+  // Optional; photo album listing and thumbnails over control_data.
+  bool supports_photo_gallery;
 };
 
 struct ServiceStatus {
@@ -188,6 +195,11 @@ struct VideoSettings {
   int preference;  // 0: frame rate, 1: quality, 2: balanced
   uint32_t request_id;
   bool accepted;  // Only meaningful in video_settings_status.
+  // UU picture tier: 0 流畅, 1 高清, 2 超清, -1 = field-by-field adjustment.
+  // A host that receives a tier applies resolution, bitrate ceiling and encode
+  // settings as one set; peers that predate the field ignore it and still apply
+  // quality/frame_rate/preference from the same message.
+  int preset = video_quality::kNoPreset;
 };
 
 struct VideoCodecStatus {
@@ -197,12 +209,21 @@ struct VideoCodecStatus {
 inline bool ValidVideoSettings(const VideoSettings& settings) {
   return settings.quality >= 0 && settings.quality <= 2 &&
          (settings.frame_rate == 30 || settings.frame_rate == 60) &&
-         settings.preference >= 0 && settings.preference <= 2;
+         settings.preference >= 0 && settings.preference <= 2 &&
+         settings.preset >= video_quality::kNoPreset &&
+         settings.preset <= video_quality::kUhd;
 }
 
 inline constexpr std::size_t kMaxTextInputBytes = 16 * 1024;
 
 struct RemoteAction {
+  // A union member with a default member initializer (VideoSettings::preset)
+  // deletes the implicit default constructor, so it is spelled out here. The
+  // largest member zero-initializes the whole union exactly like the aggregate
+  // RemoteAction{} used to, and the picture tier defaults to "no tier" instead
+  // of silently meaning 流畅.
+  RemoteAction() : ks{} { vs.preset = video_quality::kNoPreset; }
+
   ControlType type = ControlType::invalid;
   union {
     Mouse m;
@@ -219,6 +240,16 @@ struct RemoteAction {
     VideoSettings vs;
     VideoCodecStatus vcs;
   };
+  static_assert(sizeof(KeyboardState) >= sizeof(CursorState),
+                "KeyboardState must stay the largest union member");
+  static_assert(sizeof(KeyboardState) >= sizeof(HostInfo),
+                "KeyboardState must stay the largest union member");
+  static_assert(sizeof(KeyboardState) >= sizeof(PrivacyStatus),
+                "KeyboardState must stay the largest union member");
+  static_assert(sizeof(KeyboardState) >= sizeof(VideoCodecStatus),
+                "KeyboardState must stay the largest union member");
+  static_assert(sizeof(KeyboardState) >= sizeof(VideoSettings),
+                "KeyboardState must stay the largest union member");
 
   // Committed UTF-8 text. Kept outside the POD union for automatic ownership.
   std::string text;

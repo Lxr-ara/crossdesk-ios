@@ -1,0 +1,308 @@
+{
+  "0": {
+    "asset": "cursor_arrow_normal",
+    "canvas": [
+      128.0,
+      128.0
+    ],
+    "painted": [
+      0.0,
+      0.0,
+      128.0,
+      128.0
+    ],
+    "hotspot": [
+      0.0,
+      0.0
+    ],
+    "tip": true
+  },
+  "1": {
+    "asset": "cursor_arrow_up",
+    "canvas": [
+      128.0,
+      128.0
+    ],
+    "painted": [
+      0.0,
+      -0.0,
+      128.0,
+      128.0
+    ],
+    "hotspot": [
+      0.0,
+      -0.0
+    ],
+    "tip": true
+  },
+  "2": {
+    "asset": "cursor_ibeam",
+    "canvas": [
+      128.0,
+      128.0
+    ],
+    "painted": [
+      42.0,
+      28.0,
+      44.0,
+      72.0
+    ],
+    "hotspot": [
+      64.0,
+      64.0
+    ],
+    "tip": false
+  },
+  "3": {
+    "asset": "cursor_hand",
+    "canvas": [
+      128.0,
+      128.0
+    ],
+    "painted": [
+      0.0,
+      0.0,
+      128.0,
+      128.0
+    ],
+    "hotspot": [
+      0.0,
+      0.0
+    ],
+    "tip": true
+  },
+  "4": {
+    "asset": "cursor_hand",
+    "canvas": [
+      128.0,
+      128.0
+    ],
+    "painted": [
+      0.0,
+      0.0,
+      128.0,
+      128.0
+    ],
+    "hotspot": [
+      64.0,
+      64.0
+    ],
+    "tip": false
+  },
+  "5": {
+    "asset": "cursor_size_all",
+    "canvas": [
+      128.0,
+      128.0
+    ],
+    "painted": [
+      18.29,
+      18.29,
+      91.41,
+      91.41
+    ],
+    "hotspot": [
+      64.0,
+      64.0
+    ],
+    "tip": false
+  },
+  "6": {
+    "asset": "cursor_busy",
+    "canvas": [
+      128.0,
+      128.0
+    ],
+    "painted": [
+      0.0,
+      0.0,
+      128.0,
+      128.0
+    ],
+    "hotspot": [
+      64.0,
+      64.0
+    ],
+    "tip": false
+  },
+  "7": {
+    "asset": "cursor_help",
+    "canvas": [
+      128.0,
+      128.0
+    ],
+    "painted": [
+      0.0,
+      0.0,
+      128.0,
+      128.0
+    ],
+    "hotspot": [
+      0.0,
+      0.0
+    ],
+    "tip": true
+  },
+  "8": {
+    "asset": "cursor_cross",
+    "canvas": [
+      128.0,
+      128.0
+    ],
+    "painted": [
+      26.0,
+      26.0,
+      76.0,
+      76.0
+    ],
+    "hotspot": [
+      64.0,
+      64.0
+    ],
+    "tip": false
+  },
+  "9": {
+    "asset": "cursor_person",
+    "canvas": [
+      128.0,
+      128.0
+    ],
+    "painted": [
+      0.0,
+      0.0,
+      128.0,
+      128.0
+    ],
+    "hotspot": [
+      0.0,
+      0.0
+    ],
+    "tip": true
+  },
+  "11": {
+    "asset": "cursor_no",
+    "canvas": [
+      128.0,
+      128.0
+    ],
+    "painted": [
+      31.5,
+      31.5,
+      65.0,
+      65.0
+    ],
+    "hotspot": [
+      31.5,
+      31.5
+    ],
+    "tip": true
+  },
+  "16": {
+    "asset": "cursor_size_we",
+    "canvas": [
+      128.0,
+      128.0
+    ],
+    "painted": [
+      18.29,
+      45.44,
+      91.41,
+      38.06
+    ],
+    "hotspot": [
+      64.0,
+      64.47
+    ],
+    "tip": false
+  },
+  "17": {
+    "asset": "cursor_size_ns",
+    "canvas": [
+      128.0,
+      128.0
+    ],
+    "painted": [
+      45.5,
+      19.87,
+      36.99,
+      88.83
+    ],
+    "hotspot": [
+      64.0,
+      64.29
+    ],
+    "tip": false
+  },
+  "18": {
+    "asset": "cursor_size_nesw",
+    "canvas": [
+      128.0,
+      128.0
+    ],
+    "painted": [
+      32.5,
+      32.27,
+      63.23,
+      63.23
+    ],
+    "hotspot": [
+      64.11,
+      63.89
+    ],
+    "tip": false
+  },
+  "19": {
+    "asset": "cursor_size_nwse",
+    "canvas": [
+      128.0,
+      128.0
+    ],
+    "painted": [
+      32.5,
+      32.27,
+      63.23,
+      63.23
+    ],
+    "hotspot": [
+      64.11,
+      63.89
+    ],
+    "tip": false
+  },
+  "20": {
+    "asset": "cursor_person",
+    "canvas": [
+      128.0,
+      128.0
+    ],
+    "painted": [
+      0.0,
+      0.0,
+      128.0,
+      128.0
+    ],
+    "hotspot": [
+      0.0,
+      0.0
+    ],
+    "tip": true
+  },
+  "21": {
+    "asset": "cursor_pin",
+    "canvas": [
+      128.0,
+      128.0
+    ],
+    "painted": [
+      0.0,
+      0.0,
+      128.0,
+      128.0
+    ],
+    "hotspot": [
+      0.0,
+      0.0
+    ],
+    "tip": true
+  }
+}

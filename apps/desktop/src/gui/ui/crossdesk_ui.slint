@@ -5,8 +5,11 @@ export { FeedbackStrings } from "feedback_panel.slint";
 export { AboutComponent, AboutDocument, AboutPage } from "about_panel.slint";
 export { MainWindow, RecentConnection, UpdateCheckStatus, AutostartStatus, UiStrings } from "main_window.slint";
 export { StreamWindow, StreamTab, FileTransferEntry, NetworkStatsRow, StreamStrings } from "stream_window.slint";
+export { UuCursor, UuCursorStyle } from "uu_cursor.slint";
 export { ServerWindow, ServerStatusBar, ServerStrings, ControllerEntry } from "server_window.slint";
 export { FileTransferNotification } from "file_transfer_notification.slint";
+// 收端覆盖冲突提示：一个自带四个按钮的小窗，入口是 conflict_dialog_host.cpp。
+export { ConflictDialog } from "file_transfer.slint";
 export { ClipboardFileNotification } from "clipboard_file_notification.slint";
 
 export { GalleryTile, GalleryRecentDevice, GalleryActionDevice } from "gallery_view.slint";
@@ -18,3 +21,4 @@ export { DeviceGroupOption } from "device_group_dialog.slint";
 export { TrustedDeviceEntry, TrustStrings } from "trusted_devices.slint";
 
 export { FileBrowserWindow, BrowserEntry, BrowserTreeEntry, BrowserTask } from "file_browser.slint";
+export { PhotoGalleryWindow, PhotoTile } from "photo_gallery.slint";

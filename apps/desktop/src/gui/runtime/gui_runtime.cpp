@@ -1,3 +1,5 @@
+#include "gui/features/file_transfer/conflict_dialog_host.h"
+#include "gui/features/file_transfer/transfer_control_adapter.h"
 #include "runtime/gui_runtime.h"
 
 #include <SDL3/SDL_timer.h>
@@ -38,7 +40,13 @@ GuiRuntime::GuiRuntime()
             ScopedUserDesktopInputThread input_thread;
 #endif
             return ApplyRemoteInput(id, action);
-          },
+          
+  // Phone clients list and control the same queue the desktop window uses.
+  // Created here, in the constructor: an adapter built in the destructor would
+  // leave every transfer_* op answering unsupported for the whole session.
+  transfer_control_ = std::make_unique<GuiTransferControl>(transfers_, *config_center_);
+  transfers_.browser().SetTransferControl(transfer_control_.get());
+},
           [this](const std::string& id) {
 #ifdef _WIN32
             ScopedUserDesktopInputThread input_thread;
@@ -81,9 +89,13 @@ GuiRuntime::~GuiRuntime() {
 #endif
   clipboard_.Shutdown();
   lan_.reset();
+  // The browser must stop calling into the adapter before the manager dies.
+  transfers_.browser().SetTransferControl(nullptr);
+  transfer_control_.reset();
   transfers_.Shutdown();
   WaitForSessionCleanup();
   RestoreHostDisplayResolutions(true);
+
 }
 
 void GuiRuntime::SendRemoteInput(const RemoteAction& action) {

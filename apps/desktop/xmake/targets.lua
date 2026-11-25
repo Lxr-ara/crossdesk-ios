@@ -551,7 +551,9 @@ function setup_targets()
 
     target("config_center")
         set_kind("object")
-        add_deps("rd_log", "autostart")
+        -- The picture-tier key shares its vocabulary with the wire layer
+        -- (video_quality_preset.h), so the value codec has one definition.
+        add_deps("rd_log", "autostart", "crossdesk_wire")
         if is_os("linux") then
             add_deps("linux_runtime_daemon")
         elseif is_os("windows") then
@@ -699,8 +701,10 @@ function setup_targets()
             "apps/desktop/src/gui/features/about/*.cpp",
             "apps/desktop/src/gui/features/feedback/*.cpp",
             "apps/desktop/src/platform/common/gui/service_status_runtime.cpp",
+            "apps/desktop/src/platform/common/gui/game_mouse.cpp",
             "apps/desktop/src/gui/features/devices/*.cpp", "apps/desktop/src/gui/features/input/*.cpp",
             "apps/desktop/src/gui/features/clipboard/*.cpp", "apps/desktop/src/gui/features/file_transfer/*.cpp",
+            "apps/desktop/src/gui/features/photo/*.cpp",
             "apps/desktop/src/gui/features/settings/*.cpp", "apps/desktop/src/gui/features/gallery/*.cpp")
         -- Only these translation units consume the application version. Keep
         -- version changes out of the flags for media and the rest of the GUI.

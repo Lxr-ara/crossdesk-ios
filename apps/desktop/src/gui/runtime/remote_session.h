@@ -96,6 +96,9 @@ struct RemoteSession {
   PreviewSubscription preview_requested_;
   gallery::PreviewResolutionDebouncer preview_resolution_;
   std::chrono::steady_clock::time_point preview_request_at_{};
+  // 上一次评估降级时看到的入向视频字节数。字节不再增长说明画面「没在发」
+  // （预览关闭、隐私屏、对端暂停），而不是「全丢了」，那种时刻不能降档。
+  uint64_t auto_degrade_last_packets_ = 0;
   std::atomic<bool> clipboard_allowed_{false};
   std::atomic<uint64_t> input_generation_{0};
   std::atomic<bool> audio_allowed_{false};
@@ -194,6 +197,11 @@ struct RemoteSession {
   bool video_settings_pending_ = false;
   bool video_settings_failed_ = false;
   uint64_t video_settings_request_tick_ = 0;
+  // UU 画质档位：单向自动降级状态机（超清→高清→流畅），只用本会话已有的
+  // 入向丢包率与解码帧率样本，绝不自动升档。跟提示条的显示截止时间一起
+  // 存在会话里，断线即丢弃。
+  video_quality::AutoDegrade auto_degrade_;
+  uint64_t quality_preset_toast_until_ = 0;
   std::mutex privacy_status_mutex_;
   PrivacyStatus privacy_status_{};
   bool privacy_status_received_ = false;

@@ -47,6 +47,8 @@ class VideoRenderer;
 
 // Shared GUI runtime. It owns subsystem controllers and cross-cutting session
 // state, but no window lifecycle, UI view, or transport callback methods.
+class GuiTransferControl;
+
 class GuiRuntime : protected gui_detail::GuiState {
  protected:
   using FileTransferState = gui_detail::FileTransferState;
@@ -292,6 +294,9 @@ class GuiRuntime : protected gui_detail::GuiState {
   ClipboardController clipboard_;
   SessionDeviceManager devices_;
   FileTransferManager transfers_;
+  // Serves the phone transfer panel over file_browser RPC; must outlive the
+  // browser, so it is declared after transfers_ and reset before it.
+  std::unique_ptr<GuiTransferControl> transfer_control_;
   SettingsManager settings_;
   RemoteResolutionStore remote_resolutions_;
   KeyboardController keyboard_;

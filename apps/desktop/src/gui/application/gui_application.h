@@ -92,6 +92,10 @@ private:
   void SyncConnectionDialog();
   void SyncPlatformDialogs();
   void SyncStreamWindow();
+  // UU picture tiers (0 流畅 / 1 高清 / 2 超清). One entry point for the one-tap
+  // pick and for the one-way auto-degrade ladder; the tier is pushed as a single
+  // change set and never drops the connection.
+  bool ApplyVideoQualityPreset(int preset, bool automatic);
   void SyncStreamVideoFrame(double timer_lateness_ms);
   void SyncVideoFrameGapStats();
   void ScheduleNextVideoFrame();
@@ -107,6 +111,9 @@ private:
   void SyncFileTransferNotifications();
   void SyncClipboardFileNotification();
   void OpenFileManager(const std::string& remote);
+  void OpenPhotoGallery(const std::string& remote);
+  void OpenLocalPhotoGallery();
+  std::vector<std::string> PickPhotoFiles();
   std::string FileManagerPeerName(const std::string& remote);
   void CancelFileTransfer(uint32_t file_id);
   void SetServerPanelExpanded(bool expanded);
@@ -130,6 +137,10 @@ private:
   void CloseStreamTab(const std::string &remote_id);
   void CloseRemoteClosedTabs();
   void SendPointerInput(int button, int kind, float x, float y);
+  // Game mouse (relative motion, UU style) and the smart/emulation modes.
+  void SendGameMouseMove(float x, float y);
+  void SetGameMouseActive(bool active);
+  void ApplyMouseMode(int mode);
   void SendScrollInput(float delta_x, float delta_y, float x, float y);
   void SendKeyInput(const std::string &text, bool pressed, bool control,
                     bool alt, bool shift, bool meta);
@@ -148,6 +159,11 @@ private:
   CursorStateProvider cursor_state_provider_;
   std::unordered_map<std::string, CursorDeliveryState>
       cursor_delivery_states_;
+  // Game mouse capture state: pointer is confined to the remote view and only
+  // pixel deltas are sent. Resets whenever the capture ends.
+  bool game_mouse_active_ = false;
+  float game_mouse_last_x_ = -1.f;
+  float game_mouse_last_y_ = -1.f;
   uint32_t cursor_state_sequence_ = 0;
   std::chrono::steady_clock::time_point next_video_frame_time_{};
   std::chrono::steady_clock::time_point last_video_frame_gap_log_time_{};

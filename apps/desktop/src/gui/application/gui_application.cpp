@@ -1,3 +1,4 @@
+#include "gui/features/file_transfer/transfer_control_adapter.h"
 #include "application/gui_application.h"
 
 #include <SDL3/SDL.h>
@@ -43,6 +44,7 @@
 #include "features/file_transfer/transfer_notification_layout.h"
 #include "features/file_transfer/transfer_notification_state.h"
 #include "features/file_transfer/file_browser_window.h"
+#include "features/photo/photo_gallery_window.h"
 #include "features/gallery/gallery_fullscreen_transition.h"
 #include "features/gallery/gallery_window_state.h"
 #include "features/gallery/gallery_workspace.h"
@@ -54,6 +56,7 @@
 #include "platform.h"
 #ifndef __OHOS__
 #include "platform/instance_activation.h"
+#include "platform/common/gui/game_mouse.h"
 #endif
 #include "platform/video_renderer.h"
 #include "rendering/slint_video_presenter.h"
@@ -108,11 +111,29 @@
 #endif
 #include "window_geometry.h"
 #include "window_presentation.h"
+#include "remote_input_gate.h"
 
 namespace crossdesk {
 namespace {
 
 using namespace std::chrono_literals;
+
+// Game-mouse speed presets: [0.5x, 0.75x, 1x, 1.5x, 2x, 3x] in tenths.
+constexpr int kGameMouseSpeedTenths[] = {5, 8, 10, 15, 20, 30};
+
+int GameMouseSpeedToIndex(int tenths) {
+  int best = 2;
+  int distance = 1 << 30;
+  for (int index = 0; index < 6; ++index) {
+    const int delta = std::abs(kGameMouseSpeedTenths[index] - tenths);
+    if (delta < distance) { distance = delta; best = index; }
+  }
+  return best;
+}
+
+int IndexToGameMouseSpeed(int index) {
+  return kGameMouseSpeedTenths[std::clamp(index, 0, 5)];
+}
 
 bool SupportsControlHandCursor([[maybe_unused]] const slint::Window& window) {
 #if defined(_WIN32)
@@ -1086,6 +1107,7 @@ struct GuiApplication::SlintUi {
   uint64_t clipboard_notification_id = 0;
   SDL_DisplayID clipboard_notification_display = 0;
   std::map<std::string, std::unique_ptr<FileBrowserWindow>> file_browsers;
+  std::map<std::string, std::unique_ptr<PhotoGalleryWindow>> photo_galleries;
   SDL_DisplayID transfer_display = 0;
   std::shared_ptr<slint::VectorModel<ui::NetworkStatsRow>> stats_model =
       std::make_shared<slint::VectorModel<ui::NetworkStatsRow>>();
@@ -1609,6 +1631,8 @@ void GuiApplication::ResetSettingsUi(bool gallery_window) {
   auto& main = ui_->Window(gallery_window);
   main->set_language_index(language_button_value_);
   main->set_codec_index(video_encode_format_button_value_);
+  main->set_mouse_mode_index(std::clamp(config_center_->GetRemoteMouseMode(), 0, 2));
+  main->set_game_mouse_speed_index(GameMouseSpeedToIndex(config_center_->GetGameMouseSpeed()));
   main->set_ip_direct_enabled_draft(config_center_->IsIpDirectEnabled());
   main->set_settings_save_error("");
   try {
@@ -1818,6 +1842,10 @@ void GuiApplication::BindMainCallbacks(bool gallery_window) {
     if (main->get_gallery_mode()) CloseGalleryWindow();
     else MinimizeMainWindowToTray();
     main->hide();
+  });
+  main->on_open_photo_album([this] {
+    LOG_INFO("Open local photo album");
+    OpenLocalPhotoGallery();
   });
   main->on_copy_local_id([this] {
     if (!SDL_SetClipboardText(client_id_)) {
@@ -2393,6 +2421,7 @@ void GuiApplication::BindStreamCallbacks() {
     }
     props->control_mouse_ = !props->control_mouse_;
     props->enable_mouse_control_ = props->control_mouse_;
+      SetRemoteInputAllowed(props->control_mouse_);
     start_keyboard_capturer_ = props->control_mouse_;
     if (!props->control_mouse_) ReleaseControl();
   });
@@ -2420,6 +2449,13 @@ void GuiApplication::BindStreamCallbacks() {
       props->video_settings_pending_ = true;
       props->video_settings_failed_ = false;
       props->video_settings_request_tick_ = SDL_GetTicks();
+    }
+  });
+  stream->on_change_quality_preset([this](int preset) {
+    // One tap, no confirmation: the segmented control applies immediately.
+    if (!ApplyVideoQualityPreset(preset, false)) {
+      LOG_INFO("Video quality preset {} not applied (session not ready)",
+               preset);
     }
   });
   stream->on_change_remote_resolution([this](int index) {
@@ -2472,6 +2508,9 @@ void GuiApplication::BindStreamCallbacks() {
   });
   stream->on_select_file([this] {
     if (auto props = SelectedSession()) OpenFileManager(props->remote_id_);
+  });
+  stream->on_photo_gallery([this] {
+    if (auto props = SelectedSession()) OpenPhotoGallery(props->remote_id_);
   });
   stream->on_can_drop_file(
       [](const slint::DataTransfer& data) { return data.has_plain_text(); });
@@ -2850,6 +2889,13 @@ void GuiApplication::Tick() {
     else {
       if (it->second->Visible())
         it->second->SetPeerName(FileManagerPeerName(it->first));
+      ++it;
+    }
+  }
+  for (auto it = ui_->photo_galleries.begin(); it != ui_->photo_galleries.end();) {
+    if (!it->second->Tick()) it = ui_->photo_galleries.erase(it);
+    else {
+      if (it->second->Visible()) it->second->SetPeerName(FileManagerPeerName(it->first));
       ++it;
     }
   }
@@ -3365,6 +3411,8 @@ void GuiApplication::UpdateLocalization() {
   ui_localization::ApplyStreamWindowStrings(ui_->wall, language);
   if (ui_->stream) {
     ui_localization::ApplyStreamWindowStrings(*ui_->stream, language);
+    (*ui_->stream)->set_game_mouse_hint(UiText(
+        localization::Literal("按 Esc 退出游戏鼠标", language)));
   }
   for (auto& [_, browser] : ui_->file_browsers)
     browser->UpdateActionLabels(language);
@@ -3916,6 +3964,54 @@ void GuiApplication::SyncStreamKeyboardFocus() {
 #endif
 }
 
+// The single desktop entry point for a picture tier. Both the one-tap pick and
+// the auto-degrade ladder land here, so there is exactly one code path that can
+// change the tier.
+//
+// The tier travels as one video_settings message carrying the preset id plus the
+// tier's own quality/frame-rate/preference; the host turns it into one atomic
+// change set (settings + bitrate ceiling + viewport). Nothing in this path
+// leaves or rejoins the connection: the message rides the reliable control
+// stream that is already open and the host reconfigures the live encoder.
+bool GuiApplication::ApplyVideoQualityPreset(int preset, bool automatic) {
+  auto props = SelectedSession();
+  if (!props || !props->peer_ || props->closing_ ||
+      props->connection_status_.load() !=
+          MiniRtcConnectionStatus::MiniRtcConnectionConnected) {
+    return false;
+  }
+  const int clamped = video_quality::ClampPreset(preset);
+  const auto& tier = video_quality::Spec(clamped);
+  RemoteAction action{};
+  action.type = ControlType::video_settings;
+  {
+    std::lock_guard lock(props->video_settings_mutex_);
+    if (!props->video_settings_supported_) return false;
+    action.vs = {tier.quality, tier.frame_rate,           tier.preference,
+                 props->video_settings_.request_id + 1, false, tier.preset};
+    if (!ValidVideoSettings(action.vs)) return false;
+    const auto message = action.to_json();
+    if (MiniRtcSendReliableDataFrame(props->peer_, message.data(),
+                                     message.size(),
+                                     props->control_data_label_.c_str()) != 0) {
+      return false;
+    }
+    props->video_settings_ = action.vs;
+    props->video_settings_pending_ = true;
+    props->video_settings_failed_ = false;
+    props->video_settings_request_tick_ = SDL_GetTicks();
+  }
+  // A manual pick is remembered; an automatic step is deliberately not, so the
+  // next connection starts on the tier the user chose.
+  if (!automatic) config_center_->SetVideoQualityPreset(clamped);
+  props->auto_degrade_.NotifyApplied(clamped, SDL_GetTicks());
+  if (automatic) props->quality_preset_toast_until_ = SDL_GetTicks() + 6000;
+  LOG_INFO("Video quality preset {} requested ({}, request {})",
+           video_quality::PresetName(clamped),
+           automatic ? "auto-degrade" : "manual", action.vs.request_id);
+  return true;
+}
+
 void GuiApplication::SyncStreamWindow() {
   if (!ui_->gallery_control_id.empty()) return;
   bool has_sessions = false;
@@ -3936,6 +4032,11 @@ void GuiApplication::SyncStreamWindow() {
 #endif
     (*ui_->stream)->set_control_hand_cursor_supported(
         SupportsControlHandCursor(ui_->main->window()));
+    // UU-style controller cursor: drawn by us and the system pointer hidden,
+    // unless the user prefers the platform cursor shapes or the emulation mode.
+    (*ui_->stream)->global<ui::UuCursorStyle>().set_enabled(
+        config_center_->GetRemoteMouseMode() == 2
+            ? false : config_center_->GetRemoteCursorStyle() == 0);
 #if (defined(__linux__) && !defined(__OHOS__))
     (*ui_->stream)->set_custom_titlebar(use_xwayland_gui_);
 #endif
@@ -4209,7 +4310,22 @@ void GuiApplication::SyncStreamWindow() {
         ->set_frame_rate_index(props->video_settings_.frame_rate == 30 ? 0 : 1);
     (*ui_->stream)
         ->set_adaptation_policy_index(props->video_settings_.preference);
+    // Reflect the active tier. A peer that predates the preset field reports
+    // preset == -1, so the tier is derived from the quality it does report.
+    int active_preset = props->video_settings_.preset;
+    if (active_preset < video_quality::kSmooth) {
+      active_preset =
+          video_quality::PresetForQuality(props->video_settings_.quality);
+      (*ui_->stream)
+          ->set_video_quality_index(
+              video_quality::Spec(active_preset).quality);
+    }
+    (*ui_->stream)->set_quality_preset_index(active_preset);
   }
+  (*ui_->stream)->set_quality_preset_toast(UiText(
+      SDL_GetTicks() < props->quality_preset_toast_until_
+          ? localization::video_quality_degrade_toast[localization_language_index_]
+          : ""));
 #if defined(__APPLE__)
   fullscreen_button_pressed_ = IsStreamWindowFullscreen();
 #else
@@ -4259,6 +4375,57 @@ void GuiApplication::SyncStreamWindow() {
   }
 
   const auto net = props->net_traffic_stats_.Load();
+  // UU auto-degrade ladder: 超清→高清→流畅, one step at a time. It consumes only
+  // signals this session already collects: the video inbound loss fraction from
+  // MiniRtcNetTrafficStats (the same sample the network panel renders) and the
+  // delivered frames per second from ReceivedVideoStats. It never steps back up,
+  // and the sustain window plus the cool-down live in the machine so a spike
+  // cannot oscillate between two tiers.
+  if (status == MiniRtcConnectionStatus::MiniRtcConnectionConnected) {
+    int current_preset = video_quality::kNoPreset;
+    {
+      std::lock_guard lock(props->video_settings_mutex_);
+      current_preset = props->video_settings_.preset;
+      if (current_preset < video_quality::kSmooth) {
+        current_preset =
+            video_quality::PresetForQuality(props->video_settings_.quality);
+      }
+    }
+    const auto received = props->received_video_stats_.Get();
+    video_quality::DegradeSample sample;
+    sample.now_ms = SDL_GetTicks();
+    sample.loss_fraction = net.video_inbound_stats.loss_rate;
+    sample.received_fps = received.fps.value_or(-1);
+    // 空闲流不能进降级阶梯：预览关闭、隐私屏、或对端根本没在发画面时，
+    // ReceivedVideoStats 会报 fps=0（最后一帧超过 1 秒就清零），那和「全部丢帧」
+    // 长得一模一样。判据是「本会话确实在收画面」，不是「fps 好不好看」。
+    // 入向统计只有 bitrate / rtp_packet_count / loss_rate：用累计包数判断
+    // 「这一拍有没有新画面进来」，比 fps 更接近事实（fps 会被 1 秒清零规则抹平）。
+    const uint64_t video_packets = net.video_inbound_stats.rtp_packet_count;
+    const bool video_flowing = video_packets > props->auto_degrade_last_packets_;
+    props->auto_degrade_last_packets_ = video_packets;
+    // 判据是「这一拍有没有新画面进来」：暂停、隐私屏、对端没发流时字节不增长，
+    // 此时 fps 也是 0，但那是空闲而不是全丢包。
+    const bool video_expected = received.width > 0 && video_flowing;
+    if (!video_expected) props->auto_degrade_.ObserveIdle();
+    const auto step = video_expected
+                          ? props->auto_degrade_.Observe(current_preset, sample)
+                          : video_quality::DegradeStep{};
+    if (step.step) {
+      // Log the decision itself, so the metric and the threshold behind every
+      // step survive whether or not the request could be sent right now.
+      LOG_WARN(
+          "Video quality auto-degrade {} -> {}: metric={} value={:.2f} "
+          "threshold={:.2f} sustained={} ms",
+          video_quality::PresetName(step.from),
+          video_quality::PresetName(step.to), step.metric, step.value,
+          step.threshold, props->auto_degrade_.thresholds().sustain_ms);
+      if (!ApplyVideoQualityPreset(step.to, true)) {
+        LOG_WARN("Video quality auto-degrade {} not requested: session busy",
+                 video_quality::PresetName(step.to));
+      }
+    }
+  }
   const auto codecs = props->net_traffic_stats_.LoadVideoCodecs();
   (*ui_->stream)->set_stats_encoder(UiText(
       status == MiniRtcConnectionStatus::MiniRtcConnectionConnected && !codecs.remote_encoder.empty()
@@ -4862,6 +5029,93 @@ std::string GuiApplication::FileManagerPeerName(const std::string& remote) {
   return name == device.remote_id ? std::string{} : name;
 }
 
+void GuiApplication::OpenPhotoGallery(const std::string& remote) {
+  if (!transfers_.OpenGallery(remote)) {
+    // Older peers cannot answer album requests; open the dual pane browser so
+    // the user can still pick photos by hand.
+    OpenFileManager(remote);
+    return;
+  }
+  const auto pick_images = [this](std::function<void(std::vector<std::string>)> completion) {
+    completion(PickPhotoFiles());
+  };
+  const auto reveal = [this](const std::string& directory) {
+    OpenUrl("file:///" + directory);
+  };
+  auto& gallery = ui_->photo_galleries[remote];
+  if (gallery && !gallery->Tick()) gallery.reset();
+  if (!gallery) {
+    PhotoGalleryWindow::Options options;
+    options.pick_images = pick_images;
+    options.reveal = reveal;
+    gallery = std::make_unique<PhotoGalleryWindow>(transfers_, remote,
+        static_cast<bool>(FindRemoteSession(remote)), localization_language_index_,
+        std::move(options));
+  }
+  gallery->SetPeerName(FileManagerPeerName(remote));
+  gallery->Show();
+}
+
+std::vector<std::string> GuiApplication::PickPhotoFiles() {
+  const char* filters[] = {"*.jpg", "*.jpeg", "*.png", "*.webp", "*.gif", "*.bmp",
+                           "*.heic", "*.tif", "*.tiff"};
+  const auto* selection = tinyfd_openFileDialog(
+      localization::select_file[localization_language_index_].c_str(), "", 9, filters,
+      nullptr, 1);
+  std::vector<std::string> paths;
+  if (!selection) return paths;
+  std::string text(selection);
+  std::size_t start = 0;
+  while (start <= text.size()) {
+    const auto separator = text.find('|', start);
+    const auto piece = text.substr(start,
+        separator == std::string::npos ? std::string::npos : separator - start);
+    if (!piece.empty()) paths.push_back(piece);
+    if (separator == std::string::npos) break;
+    start = separator + 1;
+  }
+  return paths;
+}
+
+void GuiApplication::OpenLocalPhotoGallery() {
+  // The host side gets an album too: browse this computer's photos and push
+  // them to the controller of the selected session over the ordinary file
+  // stream (the receiver still classifies them into Photos/<year-month>).
+  const auto selected = SelectedSession();
+  const auto remote = selected ? selected->remote_id_ : std::string{};
+  const auto key = remote.empty() ? std::string("local") : remote;
+  const auto pick_images = [this](std::function<void(std::vector<std::string>)> completion) {
+    completion(PickPhotoFiles());
+  };
+  const auto reveal = [this](const std::string& directory) {
+    OpenUrl("file:///" + directory);
+  };
+  PhotoGalleryWindow::Options options;
+  options.local = true;
+  options.send_remote = remote;
+  options.pick_images = pick_images;
+  options.reveal = reveal;
+  options.send_files = [this, selected](const std::vector<std::string>& paths) {
+    if (!selected) return;
+    for (const auto& path : paths) {
+      const auto props = FindRemoteSession(selected->remote_id_);
+      if (!props) return;
+      transfers_.ProcessSelectedFile(path, props, props->file_label_,
+                                     props->remote_id_);
+    }
+  };
+  auto& gallery = ui_->photo_galleries[key];
+  if (gallery && !gallery->Tick()) gallery.reset();
+  if (!gallery) {
+    gallery = std::make_unique<PhotoGalleryWindow>(transfers_, remote, false,
+        localization_language_index_, std::move(options));
+  }
+  gallery->SetPeerName(remote.empty()
+      ? localization::Literal("本机相册", localization_language_index_)
+      : FileManagerPeerName(remote));
+  gallery->Show();
+}
+
 void GuiApplication::OpenFileManager(const std::string& remote) {
   if (!transfers_.OpenBrowser(remote)) return;
   if (!transfers_.BrowserSupported(remote)) {
@@ -4882,7 +5136,7 @@ void GuiApplication::OpenFileManager(const std::string& remote) {
   if (browser && !browser->Tick()) browser.reset();
   if (!browser) {
     const bool controller = static_cast<bool>(FindRemoteSession(remote));
-    browser = std::make_unique<FileBrowserWindow>(transfers_, remote, controller,
+    browser = std::make_unique<FileBrowserWindow>(transfers_, *config_center_, remote, controller,
         localization_language_index_);
   }
   browser->SetPeerName(FileManagerPeerName(remote));
@@ -5332,6 +5586,11 @@ bool GuiApplication::SaveSettingsFromUi(bool gallery_window) {
   language_button_value_ =
       std::clamp(main->get_language_index(), 0, localization::kSystemLanguage);
   video_encode_format_button_value_ = std::clamp(main->get_codec_index(), 0, 1);
+  // Remote mouse mode and game speed apply immediately: the capture clip must
+  // be released as soon as the user leaves the game mode.
+  ApplyMouseMode(std::clamp(main->get_mouse_mode_index(), 0, 2));
+  config_center_->SetGameMouseSpeed(
+      IndexToGameMouseSpeed(std::clamp(main->get_game_mouse_speed_index(), 0, 5)));
   enable_self_hosted_ = main->get_self_hosted_enabled();
 #if !defined(__OHOS__)
   enable_autostart_ = main->get_autostart_enabled();
@@ -5682,6 +5941,73 @@ GuiApplication::SelectedSession() {
   return nullptr;
 }
 
+void GuiApplication::SetGameMouseActive(bool active) {
+  if (active == game_mouse_active_) return;
+  game_mouse_active_ = active;
+  game_mouse_last_x_ = -1.f;
+  game_mouse_last_y_ = -1.f;
+  if (ui_->stream) {
+    const auto hwnd = (*ui_->stream)->window().win32_hwnd();
+    if (active) {
+      if (!platform::BeginGameMouse(hwnd)) {
+        LOG_WARN("Game mouse capture could not start");
+      }
+    } else {
+      platform::EndGameMouse();
+    }
+    (*ui_->stream)->set_game_mouse_active(active);
+  } else if (!active) {
+    platform::EndGameMouse();
+  }
+  LOG_INFO("Game mouse {}", active ? "engaged" : "released");
+}
+
+void GuiApplication::ApplyMouseMode(int mode) {
+  config_center_->SetRemoteMouseMode(mode);
+  // Emulation and smart mode both use absolute coordinates; only the game mode
+  // captures the pointer. Leaving the game mode always releases the clip.
+  if (mode != 1) SetGameMouseActive(false);
+  // Emulation forces system cursor shapes; smart and game use the drawn one.
+  if (ui_->stream) {
+    (*ui_->stream)->global<ui::UuCursorStyle>().set_enabled(
+        mode == 2 ? false : config_center_->GetRemoteCursorStyle() == 0);
+  }
+  LOG_INFO("Remote mouse mode set to {}", mode);
+}
+
+void GuiApplication::SendGameMouseMove(float x, float y) {
+  auto props = SelectedSession();
+  if (!props || !props->peer_ || !props->control_mouse_ || !ui_->stream) return;
+  const float width = (*ui_->stream)->get_video_area_width();
+  const float height = (*ui_->stream)->get_video_area_height();
+  if (width <= 1.f || height <= 1.f) return;
+  if (game_mouse_last_x_ < 0.f) {
+    game_mouse_last_x_ = x;
+    game_mouse_last_y_ = y;
+    return;
+  }
+  const float speed = static_cast<float>(config_center_->GetGameMouseSpeed()) / 10.f;
+  const float dx = (x - game_mouse_last_x_) * speed;
+  const float dy = (y - game_mouse_last_y_) * speed;
+  // Re-centre near the edges so the confined pointer never runs out of room.
+  constexpr float kEdge = 24.f;
+  if (x < kEdge || y < kEdge || x > width - kEdge || y > height - kEdge) {
+    platform::WarpGameMouseToCentre((*ui_->stream)->window().win32_hwnd());
+    game_mouse_last_x_ = width / 2.f;
+    game_mouse_last_y_ = height / 2.f;
+  } else {
+    game_mouse_last_x_ = x;
+    game_mouse_last_y_ = y;
+  }
+  if (dx == 0.f && dy == 0.f) return;
+  RemoteAction action{};
+  action.type = ControlType::mouse;
+  action.m.x = dx;
+  action.m.y = dy;
+  action.m.flag = MouseFlag::relative_move;
+  SendRemoteInput(action);
+}
+
 void GuiApplication::SendPointerInput(int button, int kind, float x, float y) {
   auto props = SelectedSession();
   if (!props || !props->peer_ || !props->control_mouse_ ||
@@ -5704,6 +6030,15 @@ void GuiApplication::SendPointerInput(int button, int kind, float x, float y) {
   if (kind == 0) {
     ReleaseControl();
     return;
+  }
+  // Game mouse: motion becomes relative deltas and the pointer stays captured.
+  if (kind == 3 && config_center_->GetRemoteMouseMode() == 1) {
+    if (!game_mouse_active_) SetGameMouseActive(true);
+    SendGameMouseMove(x, y);
+    return;
+  }
+  if (!game_mouse_active_ && config_center_->GetRemoteMouseMode() == 1) {
+    SetGameMouseActive(true);
   }
   if (kind == 2 && !ui_->pressed_mouse_buttons.count(button)) return;
   if (!point) {
@@ -5799,6 +6134,13 @@ void GuiApplication::SendKeyInput(const std::string& text, bool pressed,
   auto props = SelectedSession();
   if (!props || !props->peer_ || !props->control_mouse_ ||
       props->connection_status_.load() != MiniRtcConnectionStatus::MiniRtcConnectionConnected) {
+    return;
+  }
+
+  // Game mouse: Escape is the local unlock key (like UU's "退出游戏鼠标" hotkey)
+  // and is not forwarded while it releases the capture.
+  if (game_mouse_active_ && pressed && (text == "\x1b" || text == "Escape")) {
+    SetGameMouseActive(false);
     return;
   }
 
@@ -5992,6 +6334,7 @@ void GuiApplication::ReleaseControl(bool preserve_local_ui) {
     if (id == gallery_target) {
       props->control_mouse_ = false;
       props->enable_mouse_control_ = false;
+      SetRemoteInputAllowed(false);
     }
   }
   controlled_remote_id_.clear();
@@ -6435,6 +6778,7 @@ void GuiApplication::GalleryAction(const std::string& action,
     ui_->wall->set_gallery_group_controlling(!gallery_group_control_id_.empty());
     props->control_mouse_ = true;
     props->enable_mouse_control_ = true;
+      SetRemoteInputAllowed(true);
     props->clipboard_allowed_ = true;
     if (ui_->stream) (*ui_->stream)->hide();
     // The gallery window FocusScope owns keyboard input. Native capture stays

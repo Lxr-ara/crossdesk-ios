@@ -25,6 +25,7 @@
 #include "platform.h"
 #include "rd_log.h"
 #include "runtime/gui_runtime.h"
+#include "video_quality_control.h"
 #include "web_clipboard_protocol.h"
 #ifdef __OHOS__
 #include "platform/harmony/input/system_shortcuts.h"
@@ -347,16 +348,26 @@ void PeerEventHandler::OnReceiveDataBuffer(
         !runtime->IsAuthorizedController(remote_id))
       return;
     const auto& settings = remote_action.vs;
-    remote_action.vs.accepted =
-        MiniRtcUpdateVideoSettings(
-            bound_peer, wire_id.data(), wire_id.size(),
-            static_cast<MiniRtcVideoQuality>(settings.quality), settings.frame_rate,
-            static_cast<MiniRtcVideoDegradationPreference>(settings.preference)) == 0;
+    if (settings.preset >= video_quality::kSmooth) {
+      // UU picture tier: the whole change set (encode settings, sustained
+      // bitrate ceiling, outgoing viewport bound) lands in one step, so this
+      // controller never observes a half-applied tier. Nothing reconnects.
+      const auto change = ApplyPeerVideoQualityPreset(
+          bound_peer, wire_id, settings.preset, "remote-tier");
+      remote_action.vs.accepted = change.applied;
+    } else {
+      // Field-by-field adjustment from a peer that predates the tier table.
+      remote_action.vs.accepted =
+          MiniRtcUpdateVideoSettings(
+              bound_peer, wire_id.data(), wire_id.size(),
+              static_cast<MiniRtcVideoQuality>(settings.quality), settings.frame_rate,
+              static_cast<MiniRtcVideoDegradationPreference>(settings.preference)) == 0;
+    }
     LOG_INFO(
         "Video settings: source={} request={} quality={} fps={} preference={} "
-        "accepted={}",
+        "preset={} accepted={}",
         source_id, settings.request_id, settings.quality, settings.frame_rate,
-        settings.preference, remote_action.vs.accepted);
+        settings.preference, settings.preset, remote_action.vs.accepted);
     remote_action.type = ControlType::video_settings_status;
     const auto message = remote_action.to_json();
     PeerSendReliableDataFrameToPeer(bound_peer, message.data(), message.size(),
@@ -472,6 +483,8 @@ void PeerEventHandler::OnReceiveDataBuffer(
     if (source_id == runtime->control_data_label_ || source_id == kWebControlStream) {
       runtime->transfers_.SetBrowserSupport(handler, remote_id,
           remote_action.i.supports_file_browser);
+      runtime->transfers_.SetGallerySupport(handler, remote_id,
+          remote_action.i.supports_file_browser && remote_action.i.supports_photo_gallery);
       runtime->clipboard_.SetFileSupport(remote_id, handler,
           remote_action.i.supports_file_clipboard && remote_action.i.file_clipboard_version == 2);
     }

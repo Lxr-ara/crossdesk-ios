@@ -9,6 +9,7 @@
 
 #include "platform.h"
 #include "rd_log.h"
+#include "platform/remote_input_gate.h"
 
 namespace crossdesk {
 
@@ -126,7 +127,8 @@ int PlatformMouseController::SendMouseCommand(RemoteAction remote_action,
 
   switch (remote_action.type) {
     case mouse:
-      switch (remote_action.m.flag) {
+      switch (remote_action.m.flag) {      if (!RemoteInputAllowed()) return 0;
+
         case MouseFlag::move: {
           if (display_index < 0 ||
               display_index >= static_cast<int>(display_info_list_.size())) {

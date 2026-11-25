@@ -1,0 +1,57 @@
+// UU-style controller cursor overlay.
+//
+// UU远程 does not use the OS cursor inside a remote session for its default
+// "smart" mouse mode: the controller draws its own pointer (white body, dark
+// outline, soft shadow) and hides the system cursor, so the pointer never lags
+// behind the video and looks identical for every host platform. This component
+// reproduces that behaviour with our own artwork in
+// apps/desktop/src/gui/ui/cursors.
+
+import { CursorMetrics } from "cursor_metrics.slint";
+
+export global UuCursorStyle {
+    // Set from ConfigCenter::GetRemoteCursorStyle() == 0 (default).
+    in-out property <bool> enabled: true;
+    // Logical size of the drawn pointer. The source art is 64x64.
+    in-out property <length> size: CursorMetrics.desktop-tile();
+
+    // Hotspot of the artwork, in source pixels of the 64x64 canvas. The overlay
+    // is shifted by -(hotspot * size / 64) so the tip lands on the real point.
+    // Numeric values mirror crossdesk::RemoteCursorShape on the wire.
+    public pure function hotspot-x(shape: int) -> length {
+        // 与 iOS 完全同一张表：指尖热区用包围盒左上角，中心热区用它的一半。
+        return ((CursorMetrics.centred(shape)
+            ? CursorMetrics.box-x(shape) + CursorMetrics.box-w(shape) / 2
+            : CursorMetrics.box-x(shape)) * 1px) * (self.size / (CursorMetrics.canvas() * 1px));
+    }
+
+    public pure function hotspot-y(shape: int) -> length {
+        return ((CursorMetrics.centred(shape)
+            ? CursorMetrics.box-y(shape) + CursorMetrics.box-h(shape) / 2
+            : CursorMetrics.box-y(shape)) * 1px) * (self.size / (CursorMetrics.canvas() * 1px));
+    }
+}
+
+export component UuCursor inherits Image {
+    in property <int> shape: 0;
+
+    width: UuCursorStyle.size;
+    height: UuCursorStyle.size;
+    image-fit: contain;
+    source: shape == 3 ? @image-url("cursors/uu_hand.png")
+        : shape == 2 ? @image-url("cursors/uu_help.png")
+        : shape == 4 ? @image-url("cursors/uu_wait.png")
+        : shape == 5 ? @image-url("cursors/uu_wait.png")
+        : shape == 6 ? @image-url("cursors/uu_crosshair.png")
+        : shape == 7 ? @image-url("cursors/uu_text.png")
+        : shape == 9 ? @image-url("cursors/uu_copy.png")
+        : shape == 10 ? @image-url("cursors/uu_move.png")
+        : shape == 12 ? @image-url("cursors/uu_disabled.png")
+        : shape == 13 ? @image-url("cursors/uu_grab.png")
+        : shape == 14 ? @image-url("cursors/uu_grab.png")
+        : (shape == 15 || shape == 25 || shape == 18 || shape == 20) ? @image-url("cursors/uu_resize_ew.png")
+        : (shape == 16 || shape == 26 || shape == 17 || shape == 19) ? @image-url("cursors/uu_resize_ns.png")
+        : (shape == 21 || shape == 24 || shape == 27) ? @image-url("cursors/uu_resize_nesw.png")
+        : (shape == 22 || shape == 23 || shape == 28) ? @image-url("cursors/uu_resize_nwse.png")
+        : @image-url("cursors/uu_arrow.png");
+}

@@ -44,6 +44,23 @@ int main() {
   ok &= Expect(sizeof(crossdesk::FileChunkHeader) == 31 &&
                    sizeof(crossdesk::FileTransferAck) == 28,
                "file transfer wire structure size changed");
+  // Game mouse appends one flag; older values must not shift.
+  ok &= Expect(static_cast<int>(crossdesk::MouseFlag::move) == 0 &&
+                   static_cast<int>(crossdesk::MouseFlag::wheel_horizontal) == 8 &&
+                   static_cast<int>(crossdesk::MouseFlag::relative_move) == 9,
+               "mouse flag wire values changed");
+  {
+    crossdesk::RemoteAction relative{};
+    relative.type = crossdesk::ControlType::mouse;
+    relative.m.flag = crossdesk::MouseFlag::relative_move;
+    relative.m.x = -12.5f;
+    relative.m.y = 7.25f;
+    crossdesk::RemoteAction parsed_relative{};
+    ok &= Expect(parsed_relative.from_json(relative.to_json()) &&
+                     parsed_relative.m.flag == crossdesk::MouseFlag::relative_move &&
+                     parsed_relative.m.x == -12.5f && parsed_relative.m.y == 7.25f,
+                 "relative mouse deltas must survive the JSON round trip");
+  }
 
   crossdesk::RemoteAction unset_action{};
   ok &= Expect(unset_action.type == crossdesk::ControlType::invalid,
@@ -163,6 +180,27 @@ int main() {
                "host factory should advertise the app version");
   crossdesk::FreeRemoteAction(parsed_host);
   crossdesk::FreeRemoteAction(advertised);
+
+  // Photo gallery capability: absent in legacy peers, round trips when set.
+  {
+    auto gallery = crossdesk::MakeHostInformation("Host", {}, true, "1.7.6");
+    gallery.i.supports_photo_gallery = true;
+    crossdesk::RemoteAction gallery_parsed{};
+    ok &= Expect(gallery_parsed.from_json(gallery.to_json()) &&
+                     gallery_parsed.i.supports_photo_gallery,
+                 "photo gallery capability should round trip");
+    crossdesk::FreeRemoteAction(gallery_parsed);
+    crossdesk::FreeRemoteAction(gallery);
+    crossdesk::RemoteAction legacy_parsed{};
+    const auto legacy = std::string(
+        "{\"type\":3,\"host_info\":{\"host_name\":\"Legacy\",\"display_num\":0,"
+        "\"displays\":[],\"supports_file_browser\":true}}");
+    ok &= Expect(legacy_parsed.from_json(legacy) &&
+                     legacy_parsed.i.supports_file_browser &&
+                     !legacy_parsed.i.supports_photo_gallery,
+                 "legacy peers must default the gallery capability to false");
+    crossdesk::FreeRemoteAction(legacy_parsed);
+  }
 
   // The platform is optional metadata, not a requirement for connecting.
   for (const auto& platform : std::vector<std::string>{

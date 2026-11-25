@@ -103,6 +103,7 @@ void ResetHostInfo(HostInfo& info) {
   info.supports_file_browser = false;
   info.supports_file_clipboard = false;
   info.file_clipboard_version = 0;
+  info.supports_photo_gallery = false;
 }
 
 void CopyHostName(HostInfo& info, const std::string& host_name) {
@@ -289,7 +290,8 @@ std::string RemoteAction::ToJson(const RemoteAction& action) {
                                   {"frame_rate", action.vs.frame_rate},
                                   {"preference", action.vs.preference},
                                   {"request_id", action.vs.request_id},
-                                  {"accepted", action.vs.accepted}};
+                                  {"accepted", action.vs.accepted},
+                                  {"preset", action.vs.preset}};
       break;
     case ControlType::audio_capture:
       object["audio_capture"] = action.a;
@@ -346,7 +348,8 @@ std::string RemoteAction::ToJson(const RemoteAction& action) {
           {"supports_deskhub_bandwidth", action.i.supports_deskhub_bandwidth},
           {"supports_file_browser", action.i.supports_file_browser},
           {"supports_file_clipboard", action.i.supports_file_clipboard},
-          {"file_clipboard_version", action.i.file_clipboard_version}};
+          {"file_clipboard_version", action.i.file_clipboard_version},
+          {"supports_photo_gallery", action.i.supports_photo_gallery}};
       if (!action.display_resolutions.empty())
         object["host_info"]["display_resolutions"] =
             DisplayResolutionsJson(action.display_resolutions);
@@ -497,6 +500,12 @@ bool RemoteAction::FromJson(const std::string& json_string,
         output.vs = {settings.at("quality").get<int>(),
                      settings.at("frame_rate").get<int>(),
                      settings.at("preference").get<int>()};
+        // Older peers omit the tier; an unknown tier is not a tier.
+        const auto preset = settings.value("preset", video_quality::kNoPreset);
+        output.vs.preset =
+            preset >= video_quality::kNoPreset && preset <= video_quality::kUhd
+                ? preset
+                : video_quality::kNoPreset;
         if (!ValidVideoSettings(output.vs)) return false;
         const auto& request_id = settings.at("request_id");
         if (!request_id.is_number_integer() || request_id.get<int64_t>() < 0 ||
@@ -609,6 +618,8 @@ bool RemoteAction::FromJson(const std::string& json_string,
         output.i.supports_file_clipboard =
             host_info_object.value("supports_file_clipboard", false);
         output.i.file_clipboard_version = host_info_object.value("file_clipboard_version", 0);
+        output.i.supports_photo_gallery =
+            host_info_object.value("supports_photo_gallery", false);
         const std::string host_name =
             host_info_object.at("host_name").get<std::string>();
         CopyHostName(output.i, host_name);

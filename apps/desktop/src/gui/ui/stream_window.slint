@@ -3,6 +3,7 @@ import { UiRadius } from "ui_radius.slint";
 import { ScrollView } from "std-widgets.slint";
 import { SettingsSelect } from "settings_controls.slint";
 import { RemoteCursor } from "remote_cursor.slint";
+import { UuCursor, UuCursorStyle } from "uu_cursor.slint";
 import { FontAwesomeIcons, IconButton, PrimaryButton, SecondaryButton, DialogSurface, ImGuiFontStyle, ControlStyle, ButtonStyle, ScrollingText } from "common.slint";
 
 export struct StreamTab {
@@ -38,6 +39,12 @@ export global StreamStrings {
     in-out property <string> remote-resolution: "Resolution";
     in-out property <string> video-settings-unavailable: "The remote device does not support live video settings";
     in-out property <string> video-quality: "Video quality";
+    // UU picture tiers: one tap, no confirmation.
+    in-out property <string> quality-preset: "Picture quality";
+    in-out property <string> quality-preset-smooth: "Smooth";
+    in-out property <string> quality-preset-hd: "HD";
+    in-out property <string> quality-preset-uhd: "Ultra HD";
+    in-out property <string> quality-preset-degrade-toast: "Weak network: picture quality was lowered automatically";
     in-out property <string> frame-rate: "Capture frame rate";
     in-out property <string> adaptation-policy: "Video preference";
     in-out property <string> quality-low: "Low";
@@ -60,6 +67,7 @@ export global StreamStrings {
     in-out property <string> audio: "Play audio";
     in-out property <string> mute: "Mute";
     in-out property <string> select-file: "Select File to Send";
+    in-out property <string> photo-gallery: "Photo Album";
     in-out property <string> show-stats: "Show network status";
     in-out property <string> hide-stats: "Hide network status";
     in-out property <string> fullscreen: "Fullscreen";
@@ -324,13 +332,27 @@ export component StreamWindow inherits Window {
     // Numeric values mirror crossdesk::RemoteCursorShape and Slint's MouseCursor.
     in property <bool> remote-cursor-active: false;
     in property <int> remote-cursor-shape: 0;
+    // Controller-drawn pointer (UU style). Position is tracked from the remote
+    // viewport so the overlay follows the real pointer instead of the OS cursor.
+    in-out property <length> remote-pointer-x: 0px;
+    in-out property <length> remote-pointer-y: 0px;
+    in-out property <bool> remote-pointer-inside: false;
+    // Game mouse (relative capture). The pointer is confined and hidden; Escape
+    // releases it. `game-mouse-hint` is the localised unlock hint.
+    in property <bool> game-mouse-active: false;
+    in property <string> game-mouse-hint: "";
     in property <bool> audio-enabled: true;
     in property <bool> video-settings-enabled: false;
     in property <string> video-settings-feedback: "";
     in-out property <int> video-quality-index: 2;
     in-out property <int> frame-rate-index: 1;
     in-out property <int> adaptation-policy-index: 1;
+    // UU picture tier (0 流畅 / 1 高清 / 2 超清). Selecting a segment applies the
+    // whole tier immediately; the toast reports an automatic step down.
+    in-out property <int> quality-preset-index: 2;
+    in property <string> quality-preset-toast: "";
     callback change-video-settings(int, int, int);
+    callback change-quality-preset(int);
     in property <[string]> remote-resolutions;
     in property <bool> remote-resolution-visible: false;
     in property <int> remote-resolution-index: -1;
@@ -377,6 +399,7 @@ export component StreamWindow inherits Window {
     callback toggle-privacy;
     callback toggle-audio;
     callback select-file;
+    callback photo-gallery;
     callback close-file-transfer;
     pure callback can-drop-file(data-transfer) -> bool;
     callback file-dropped(data-transfer);
@@ -1092,14 +1115,50 @@ export component StreamWindow inherits Window {
                     accept
                 }
                 pointer := TouchArea {
+                    // UU style: hide the system pointer and draw our own so the
+                    // cursor does not lag behind the remote video.
                     mouse-cursor: root.remote-cursor-active
-                        ? RemoteCursor.shape(root.remote-cursor-shape) : MouseCursor.default;
+                        ? (root.game-mouse-active ? MouseCursor.none
+                            : UuCursorStyle.enabled
+                                ? MouseCursor.none : RemoteCursor.shape(root.remote-cursor-shape))
+                        : MouseCursor.default;
                     pointer-event(event) => {
+                        root.remote-pointer-x = self.mouse-x;
+                        root.remote-pointer-y = self.mouse-y;
+                        root.remote-pointer-inside = true;
                         root.route-remote-pointer(event.button, event.kind, self.mouse-x, self.mouse-y);
                     }
                     scroll-event(event) => {
                         root.route-remote-scroll(event.delta-x, event.delta-y, self.mouse-x, self.mouse-y);
                         accept
+                    }
+                }
+                // Drawn above the video, below the toolbar: the UU-style pointer.
+                if UuCursorStyle.enabled && !root.game-mouse-active && root.remote-cursor-active
+                        && root.remote-pointer-inside && pointer.has-hover
+                        && root.remote-cursor-shape != 1: UuCursor {
+                    z: 5;
+                    shape: root.remote-cursor-shape;
+                    x: root.remote-pointer-x - UuCursorStyle.hotspot-x(root.remote-cursor-shape);
+                    y: root.remote-pointer-y - UuCursorStyle.hotspot-y(root.remote-cursor-shape);
+                }
+                // Game mouse: local unlock hint, drawn over the remote video.
+                if root.game-mouse-active && root.game-mouse-hint != "": Rectangle {
+                    z: 6;
+                    x: (parent.width - self.width) / 2;
+                    y: parent.height - 52px;
+                    width: game-mouse-label.preferred-width + 28px;
+                    height: 28px;
+                    background: #1f2d3dcc;
+                    border-radius: 14px;
+                    game-mouse-label := Text {
+                        text: root.game-mouse-hint;
+                        color: white;
+                        font-size: 12px;
+                        width: parent.width;
+                        height: parent.height;
+                        horizontal-alignment: center;
+                        vertical-alignment: center;
                     }
                 }
             }
@@ -1109,11 +1168,14 @@ export component StreamWindow inherits Window {
             // The logo also retains a stable owner if another button is used.
             if root.remote-pointer-active || root.control-drag-pending: TouchArea {
                 z: 15;
-                mouse-cursor: root.control-drag-pending
-                    ? (root.control-hand-cursor-supported ? MouseCursor.pointer : MouseCursor.default)
-                    : root.remote-cursor-active ? RemoteCursor.shape(root.remote-cursor-shape)
-                    : MouseCursor.default;
+                mouse-cursor: (root.game-mouse-active || UuCursorStyle.enabled) ? MouseCursor.none
+                    : root.control-drag-pending
+                        ? (root.control-hand-cursor-supported ? MouseCursor.pointer : MouseCursor.default)
+                        : root.remote-cursor-active ? RemoteCursor.shape(root.remote-cursor-shape)
+                        : MouseCursor.default;
                 pointer-event(event) => {
+                    root.remote-pointer-x = self.mouse-x;
+                    root.remote-pointer-y = self.mouse-y;
                     if root.control-drag-pending {
                         root.update-control-drag(event.button, event.kind, self.mouse-x, self.mouse-y);
                     } else {
@@ -1133,7 +1195,7 @@ export component StreamWindow inherits Window {
             control := Rectangle {
                 x: root.control-dragging ? root.control-drag-x : root.control-docked-left ? 0px : parent.width - self.width;
                 y: min(max(0px, root.control-pos-y), parent.height - self.height);
-                width: root.control-visual-expanded ? min(80px + 7 * root.control-button-step + root.control-shortcut-width + root.control-privacy-width + root.control-disconnect-gap, parent.width) : root.control-toolbar-height;
+                width: root.control-visual-expanded ? min(80px + 8 * root.control-button-step + root.control-shortcut-width + root.control-privacy-width + root.control-disconnect-gap, parent.width) : root.control-toolbar-height;
                 height: root.control-toolbar-height;
                 z: 10;
 
@@ -1257,6 +1319,15 @@ export component StreamWindow inherits Window {
                     tooltip: root.fullscreen-enabled ? StreamStrings.exit-fullscreen : StreamStrings.fullscreen;
                     clicked => { root.close-control-menus(); root.toggle-fullscreen(); }
                 }
+                photo-button := ControlBarButton {
+                    reveal-progress: root.control-content-progress;
+                    visible: root.control-content-visible;
+                    action-enabled: root.control-expanded;
+                    x: root.control-buttons-x + 7 * root.control-button-step + root.control-shortcut-width + root.control-privacy-width;
+                    y: (parent.height - self.height) / 2;
+                    icon: "\u{f03e}"; tooltip: StreamStrings.photo-gallery;
+                    clicked => { root.close-control-menus(); root.photo-gallery(); }
+                }
                 if root.control-content-visible: SurfaceSeparator {
                     opacity: root.control-content-progress;
                     x: close-button.x - 6px; y: 12px;
@@ -1267,7 +1338,7 @@ export component StreamWindow inherits Window {
                     reveal-progress: root.control-content-progress;
                     visible: root.control-content-visible;
                     action-enabled: root.control-expanded;
-                    x: root.control-buttons-x + 7 * root.control-button-step + root.control-shortcut-width + root.control-privacy-width + root.control-disconnect-gap;
+                    x: root.control-buttons-x + 8 * root.control-button-step + root.control-shortcut-width + root.control-privacy-width + root.control-disconnect-gap;
                     y: (parent.height - self.height) / 2;
                     icon: FontAwesomeIcons.xmark; tooltip: StreamStrings.disconnect;
                     danger: true;
@@ -1677,10 +1748,10 @@ export component StreamWindow inherits Window {
                         color: #8b8f95; font-size: 11px; height: 24px;
                     }
                     VideoSettingRow {
-                        label: StreamStrings.video-quality;
-                        options: [StreamStrings.quality-low, StreamStrings.quality-medium, StreamStrings.quality-high];
-                        selected: root.video-quality-index; enabled: root.video-settings-enabled;
-                        choose(index) => { root.change-video-settings(index, root.frame-rate-index, root.adaptation-policy-index); }
+                        label: StreamStrings.quality-preset;
+                        options: [StreamStrings.quality-preset-smooth, StreamStrings.quality-preset-hd, StreamStrings.quality-preset-uhd];
+                        selected: root.quality-preset-index; enabled: root.video-settings-enabled;
+                        choose(index) => { root.change-quality-preset(index); }
                     }
                     VideoSettingRow {
                         label: StreamStrings.frame-rate; options: ["30 fps", "60 fps"];
@@ -1832,6 +1903,23 @@ export component StreamWindow inherits Window {
                 service-warning-text := Text {
                     x: 12px; y: 10px; width: parent.width - 24px;
                     text: root.service-warning; color: #805b12;
+                    font-size: 12px; wrap: word-wrap;
+                }
+            }
+            // One-line notice after an automatic tier step. It never blocks the
+            // view or the toolbar and disappears on its own.
+            if root.quality-preset-toast != "" && !root.modal-visible: FlatSurface {
+                x: (parent.width - self.width) / 2;
+                y: parent.height - self.height - 64px;
+                width: min(440px, parent.width - 32px);
+                height: quality-preset-toast-text.preferred-height + 20px;
+                background: #eef2f7;
+                outline-color: #cfd6e0;
+                border-radius: UiRadius.surface;
+                z: 12;
+                quality-preset-toast-text := Text {
+                    x: 12px; y: 10px; width: parent.width - 24px;
+                    text: root.quality-preset-toast; color: #3a4250;
                     font-size: 12px; wrap: word-wrap;
                 }
             }

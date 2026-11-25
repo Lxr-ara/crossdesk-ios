@@ -421,7 +421,16 @@ inline std::optional<ResumeRecord> ReadResumeRecordUnchecked(const std::filesyst
 inline std::optional<uint64_t> ResumePrefixBytes(const std::filesystem::path& dir,
                                                  const ResumeRecord& record) {
   std::error_code ec;
-  const auto prefix = dir / resume_detail::PathFromUtf8(record.target_path);
+  auto prefix = dir / resume_detail::PathFromUtf8(record.target_path);
+  // 接收方在目标名被占用时把前缀写成 .crossdesk-prefix-<name>；读取端两种形态都认，
+  // 谁存在用谁（不复制、不改名，只读大小）。
+  {
+    std::error_code probe;
+    const auto staged = dir / resume_detail::PathFromUtf8(
+        std::string(".crossdesk-prefix-") + record.target_path);
+    // 新记录一律用旁路副本；旧版本可能把前缀写在最终名上，两种都认。
+    if (std::filesystem::exists(staged, probe)) prefix = staged;
+  }
   if (!std::filesystem::is_regular_file(prefix, ec)) return std::nullopt;
   const auto size = std::filesystem::file_size(prefix, ec);
   if (ec) return std::nullopt;

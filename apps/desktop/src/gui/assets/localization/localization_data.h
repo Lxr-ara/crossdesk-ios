@@ -13,6 +13,8 @@ namespace localization {
 namespace detail {
 struct TranslationRow { const char* key; const char* text[10]; };
 inline constexpr TranslationRow kTranslationRows[] = {
+  {"鼠标灵敏度", {"鼠标灵敏度", "Pointer sensitivity", "Чувствительность указателя", "滑鼠靈敏度", "ポインターの感度", "포인터 민감도", "Zeigerempfindlichkeit", "Sensibilité du pointeur", "Sensibilidad del puntero", "Sensibilidade do ponteiro"}},
+  {"滚轮灵敏度", {"滚轮灵敏度", "Scroll sensitivity", "Чувствительность прокрутки", "滾輪靈敏度", "スクロールの感度", "스크롤 민감도", "Scroll-Empfindlichkeit", "Sensibilité du défilement", "Sensibilidad de desplazamiento", "Sensibilidade da rolagem"}},
   {"", {"", " ", " ", "", "", "", "", "", "", ""}},
   {" 台", {" 台", "", "", " 臺", " ", " ", " ", " ", " ", " "}},
   {" 台已连接", {" 台已连接", " connected", " подключено", " 臺已連線", " 接続されています", " 연결됨", " verbunden", " connecté", " conectado", " conectado"}},
@@ -66,6 +68,7 @@ inline constexpr TranslationRow kTranslationRows[] = {
   {"修改端口", {"修改端口", "Edit port", "Изменить порт", "修改埠", "ポートの編集", "포트 편집", "Port bearbeiten", "Modifier le port", "Editar puerto", "Editar porta"}},
   {"停留翻页，松开取消", {"停留翻页，松开取消", "Hold to turn page; release to cancel", "Удерживайте для перелистывания; отпустите для отмены", "停留翻頁，鬆開取消", "長押ししてページをめくります。リリースしてキャンセルする", "페이지를 넘기려면 길게 누르세요. 취소하다", "Halten Sie gedrückt, um die Seite umzublättern. Freigabe zum Abbrechen", "Maintenez enfoncé pour tourner la page ; libérer pour annuler", "Mantenga presionado para pasar la página; liberar para cancelar", "Segure para virar a página; liberar para cancelar"}},
   {"允许共享此 Mac 的屏幕画面", {"允许共享此 Mac 的屏幕画面", "Allow sharing this Mac’s screen", "Разрешить показ экрана этого Mac", "允許共享此 Mac 的螢幕畫面", "この Mac の画面の共有を許可する", "이 Mac의 화면 공유를 허용합니다", "Erlauben Sie die Freigabe des Bildschirms dieses Mac", "Autoriser le partage de l'écran de ce Mac", "Permitir compartir la pantalla de esta Mac", "Permitir compartilhar a tela deste Mac"}},
+  {"隐私屏使用黑屏画面", {"隐私屏使用黑屏画面", "Use a black privacy screen", "Чёрный экран в режиме приватности", "隱私螢幕使用黑色畫面", "プライバシースクリーンを黒一色にする", "프라이버시 화면을 검은색으로 표시", "Schwarzen Sichtschutzbildschirm verwenden", "Utiliser un écran de confidentialité noir", "Usar una pantalla de privacidad negra", "Usar tela preta no modo de privacidade"}},
   {"允许被控时解锁隐私屏", {"允许被控时解锁隐私屏", "Allow privacy screen unlock while controlled", "Разрешить разблокировку приватного экрана при удалённом управлении", "允許被控時解鎖隱私屏", "制御中にプライバシー画面のロック解除を許可する", "제어되는 동안 개인 정보 보호 화면 잠금 해제 허용", "Entsperren des Sichtschutzbildschirms während der Steuerung zulassen", "Autoriser le déverrouillage de l'écran de confidentialité pendant le contrôle", "Permitir el desbloqueo de la pantalla de privacidad mientras está controlado", "Permitir desbloqueio da tela de privacidade enquanto controlado"}},
   {"允许远程键盘和鼠标控制", {"允许远程键盘和鼠标控制", "Allow remote keyboard and mouse input", "Разрешить удалённый ввод с клавиатуры и мыши", "允許遠端鍵盤和滑鼠控制", "リモートのキーボードとマウスの入力を許可する", "원격 키보드 및 마우스 입력 허용", "Remote-Tastatur- und Mauseingabe zulassen", "Autoriser la saisie au clavier et à la souris à distance", "Permitir la entrada remota de teclado y mouse", "Permitir entrada remota de teclado e mouse"}},
   {"全屏", {"全屏", "Fullscreen", "На весь экран", "全屏", "フルスクリーン", "전체화면", "Vollbild", "Plein écran", "Pantalla completa", "Tela cheia"}},
@@ -76,7 +79,6 @@ inline constexpr TranslationRow kTranslationRows[] = {
   {"关于", {"关于", "About", "О программе", "關於", "概要", "소개", "Ungefähr", "À propos", "Acerca de", "Sobre"}},
   {"关闭", {"关闭", "Close", "Закрыть", "關閉", "閉じる", "닫기", "Schließen", "Fermer", "Cerrar", "Fechar"}},
   {"关闭 IP 连接将隐藏模式按钮，并断开 IP 连接会话。", {"关闭 IP 连接将隐藏模式按钮，并断开 IP 连接会话。", "Disabling IP connections hides the mode button and ends IP sessions.", "Отключение подключений по IP скроет кнопку режима и завершит IP-сеансы.", "關閉 IP 連線將隱藏模式按鈕，並斷開 IP 連線會話。", "IP 接続を無効にすると、モード ボタンが非表示になり、IP セッションが終了します。", "IP 연결을 비활성화하면 모드 버튼이 숨겨지고 IP 세션이 종료됩니다.", "Durch das Deaktivieren von IP-Verbindungen wird die Modusschaltfläche ausgeblendet und IP-Sitzungen beendet.", "La désactivation des connexions IP masque le bouton de mode et met fin aux sessions IP.", "Deshabilitar las conexiones IP oculta el botón de modo y finaliza las sesiones IP.", "Desativar conexões IP oculta o botão de modo e encerra sessões IP."}},
-  {"关闭后本版本不再提示，升级后再次显示。赞助入口仍在「关于」中。", {"关闭后本版本不再提示，升级后再次显示。赞助入口仍在「关于」中。", "Once closed, this prompt stays hidden until the version changes. Sponsorship links remain available in About.", "После закрытия это окно появится только при смене версии. Ссылки для поддержки останутся в разделе «О программе».", "關閉後本版本不再提示，升級後再次顯示。贊助入口仍在「關於」中。", "このプロンプトは一度閉じると、バージョンが変更されるまで非表示になります。スポンサーリンクは「About」から引き続き利用できます。", "일단 닫히면 이 메시지는 버전이 변경될 때까지 숨겨진 상태로 유지됩니다. 후원 링크는 정보에서 계속 사용할 수 있습니다.", "Nach dem Schließen bleibt diese Eingabeaufforderung ausgeblendet, bis sich die Version ändert. Sponsoring-Links bleiben weiterhin in „Info“ verfügbar.", "Une fois fermée, cette invite reste masquée jusqu'à ce que la version change. Les liens de parrainage restent disponibles dans À propos.", "Una vez cerrado, este mensaje permanece oculto hasta que cambie la versión. Los enlaces de patrocinio permanecen disponibles en Acerca de.", "Uma vez fechado, este prompt permanece oculto até que a versão seja alterada. Os links de patrocínio permanecem disponíveis em Sobre."}},
   {"关闭窗口", {"关闭窗口", "Close window", "Закрыть окно", "關閉視窗", "ウィンドウを閉じる", "창 닫기", "Fenster schließen", "Fermer la fenêtre", "Cerrar ventana", "Fechar janela"}},
   {"关闭群控", {"关闭群控", "Stop group control", "Откл. групп. ввод", "關閉群控", "グループ制御の停止", "그룹 제어 중지", "Gruppensteuerung stoppen", "Arrêter le contrôle de groupe", "Detener control de grupo", "Parar controle de grupo"}},
   {"关闭隐私屏", {"关闭隐私屏", "Disable privacy screen", "Выключить приватный экран", "關閉隱私屏", "プライバシー画面を無効にする", "개인 정보 보호 화면 비활성화", "Privatsphäre-Bildschirm deaktivieren", "Désactiver l'écran de confidentialité", "Desactivar la pantalla de privacidad", "Desativar tela de privacidade"}},
@@ -127,7 +129,6 @@ inline constexpr TranslationRow kTranslationRows[] = {
   {"复制失败，请重试。", {"复制失败，请重试。", "Could not copy. Try again.", "Не удалось скопировать. Повторите попытку.", "複製失敗，請重試。", "コピーできませんでした。もう一度やり直してください。", "복사할 수 없습니다. 다시 시도해 보세요.", "Kopieren nicht möglich. Versuchen Sie es erneut.", "Impossible de copier. Essayer à nouveau.", "No se pudo copiar. Intentar otra vez.", "Não foi possível copiar. Tente novamente."}},
   {"复制本机 ID", {"复制本机 ID", "Copy local ID", "Копировать ID", "複製本機 ID", "ローカルIDをコピーする", "로컬 ID 복사", "Lokale ID kopieren", "Copier l'identifiant local", "Copiar ID local", "Copiar ID local"}},
   {"失败", {"失败", "Failed", "Ошибка", "失敗", "失敗しました", "실패", "Fehlgeschlagen", "Échec", "Fallido", "Falhou"}},
-  {"如果 CrossDesk 对你有帮助，欢迎赞助支持项目的持续开发、跨平台测试与日常维护。感谢你的支持！", {"如果 CrossDesk 对你有帮助，欢迎赞助支持项目的持续开发、跨平台测试与日常维护。感谢你的支持！", "If CrossDesk is useful to you, consider supporting its continued development, cross-platform testing, and maintenance. Thank you for your support!", "Если CrossDesk вам полезен, поддержите его дальнейшую разработку, тестирование на разных платформах и сопровождение. Спасибо за вашу поддержку!", "如果 CrossDesk 對你有幫助，歡迎贊助支援專案的持續開發、跨平臺測試與日常維護。感謝你的支援！", "CrossDeskが役立つ場合は、継続的な開発、クロスプラットフォーム テスト、およびメンテナンスのサポートを検討してください。ご支援ありがとうございます！", "CrossDesk가 유용하다면 지속적인 개발, 크로스 플랫폼 테스트 및 유지 관리 지원을 고려해보세요. 귀하의 지원에 감사드립니다!", "Wenn CrossDesk für Sie nützlich ist, sollten Sie darüber nachdenken, seine weitere Entwicklung, plattformübergreifende Tests und Wartung zu unterstützen. Vielen Dank für Ihre Unterstützung!", "Si CrossDesk vous est utile, envisagez de prendre en charge son développement continu, ses tests multiplateformes et sa maintenance. Merci pour votre soutien !", "Si CrossDesk le resulta útil, considere respaldar su desarrollo continuo, pruebas multiplataforma y mantenimiento. ¡Gracias por su apoyo!", "Se CrossDesk for útil para você, considere apoiar seu desenvolvimento contínuo, testes de plataforma cruzada e manutenção. Obrigado pelo seu apoio!"}},
   {"守护进程（无头控制台中不生效）", {"守护进程（无头控制台中不生效）", "Daemon (inactive in headless console)", "Фоновый режим (не действует в консоли)", "守護程序（無頭控制檯中不生效）", "デーモン (ヘッドレス コンソールでは非アクティブ)", "데몬(헤드리스 콘솔에서는 비활성)", "Daemon (in der Headless-Konsole inaktiv)", "Démon (inactif dans la console sans tête)", "Daemon (inactivo en consola sin cabeza)", "Daemon (inativo no console headless)"}},
   {"安装", {"安装", "Install", "Установить", "安裝", "インストール", "설치", "Installieren", "Installer", "Instalar", "Instalar"}},
   {"安装 CrossDesk Service", {"安装 CrossDesk Service", "Install CrossDesk Service", "Установить CrossDesk Service", "安裝 CrossDesk Service", "CrossDeskサービスのインストール", "CrossDesk서비스 설치", "Installieren Sie den CrossDesk-Dienst", "Installer le service CrossDesk", "Instalar el servicio CrossDesk", "Instale o serviço CrossDesk"}},
@@ -357,6 +358,7 @@ inline constexpr TranslationRow kTranslationRows[] = {
   {"自托管设置", {"自托管设置", "Self-hosted server settings", "Настройки своего сервера", "自託管設定", "セルフホストサーバーの設定", "자체 호스팅 서버 설정", "Selbstgehostete Servereinstellungen", "Paramètres du serveur auto-hébergé", "Configuración del servidor autohospedado", "Configurações do servidor auto-hospedado"}},
   {"自托管配置", {"自托管配置", "Self-hosted server", "Собственный сервер", "自託管配置", "セルフホストサーバー", "자체 호스팅 서버", "Selbstgehosteter Server", "Serveur auto-hébergé", "Servidor autohospedado", "Servidor auto-hospedado"}},
   {"被控中", {"被控中", "Controlled", "Под управлением", "被控中", "制御済み", "제어됨", "Kontrolliert", "Contrôlé", "Controlado", "Controlado"}},
+  {"被控中 · {0} 台", {"被控中 · {0} 台", "Controlled · {0}", "Под управлением · {0}", "被控中 · {0} 臺", "遠隔操作中 · {0} 台", "원격 제어 중 · {0}대", "Ferngesteuert · {0}", "Sous contrôle · {0}", "Controlado · {0}", "Controlado · {0}"}},
   {"被控端已通过组合键解除隐私屏。点击“锁定”将重新开启隐私屏，并禁止本机使用组合键解锁。", {"被控端已通过组合键解除隐私屏。点击“锁定”将重新开启隐私屏，并禁止本机使用组合键解锁。", "The remote privacy screen was unlocked using the local shortcut. Lock it again to restore privacy and disable local shortcut unlocking.", "Приватный экран отключён локальным сочетанием клавиш. Заблокируйте его снова, чтобы восстановить защиту и запретить локальную разблокировку.", "被控端已透過組合鍵解除隱私屏。點選“鎖定”將重新開啟隱私屏，並禁止本機使用組合鍵解鎖。", "ローカル ショートカットを使用してリモート プライバシー画面のロックが解除されました。再度ロックするとプライバシーが回復され、ローカル ショートカットのロック解除が無効になります。", "로컬 단축키를 사용하여 원격 개인정보 보호 화면을 잠금 해제했습니다. 개인정보 보호를 복원하고 로컬 바로가기 잠금 해제를 비활성화하려면 다시 잠그세요.", "Der Remote-Datenschutzbildschirm wurde über die lokale Verknüpfung entsperrt. Sperren Sie es erneut, um die Privatsphäre wiederherzustellen und das Entsperren lokaler Verknüpfungen zu deaktivieren.", "L'écran de confidentialité à distance a été déverrouillé à l'aide du raccourci local. Verrouillez-le à nouveau pour restaurer la confidentialité et désactiver le déverrouillage des raccourcis locaux.", "La pantalla de privacidad remota se desbloqueó usando el acceso directo local. Bloquéelo nuevamente para restaurar la privacidad y deshabilitar el desbloqueo de accesos directos locales.", "A tela de privacidade remota foi desbloqueada usando o atalho local. Bloqueie-o novamente para restaurar a privacidade e desativar o desbloqueio de atalhos locais."}},
   {"被控端编码器", {"被控端编码器", "Remote encoder", "Кодер удалённой стороны", "被控端編碼器", "リモートエンコーダー", "리모트 엔코더", "Remote-Encoder", "Encodeur déporté", "Codificador remoto", "Codificador remoto"}},
   {"被控端编码器  ", {"被控端编码器  ", "Remote encoder  ", "Удалённый кодер  ", "被控端編碼器  ", "リモートエンコーダー ", "리모트 엔코더 ", "Remote-Encoder ", "Encodeur déporté ", "Codificador remoto ", "Codificador remoto "}},
@@ -417,6 +419,7 @@ inline constexpr TranslationRow kTranslationRows[] = {
   {"请重试或检查本机防火墙。", {"请重试或检查本机防火墙。", "Retry or check the local firewall.", "Повторите попытку или проверьте брандмауэр.", "請重試或檢查本機防火牆。", "再試行するか、ローカル ファイアウォールを確認します。", "로컬 방화벽을 다시 시도하거나 확인하세요.", "Versuchen Sie es erneut oder überprüfen Sie die lokale Firewall.", "Réessayez ou vérifiez le pare-feu local.", "Vuelva a intentarlo o verifique el firewall local.", "Tente novamente ou verifique o firewall local."}},
   {"读取失败", {"读取失败", "Read failed", "Ошибка чтения", "讀取失敗", "読み取りに失敗しました", "읽기 실패", "Lesen fehlgeschlagen", "Échec de la lecture", "Error de lectura", "Falha na leitura"}},
   {"调整失败，请重试。", {"调整失败，请重试。", "Could not apply settings. Try again.", "Не удалось применить настройки. Повторите попытку.", "調整失敗，請重試。", "設定を適用できませんでした。もう一度やり直してください。", "설정을 적용할 수 없습니다. 다시 시도해 보세요.", "Einstellungen konnten nicht angewendet werden. Versuchen Sie es erneut.", "Impossible d'appliquer les paramètres. Essayer à nouveau.", "No se pudieron aplicar las configuraciones. Intentar otra vez.", "Não foi possível aplicar as configurações. Tente novamente."}},
+  {"特别赞助", {"特别赞助", "Special sponsor", "Особый спонсор", "特別贊助", "特別協賛", "특별 후원", "Besonderer Sponsor", "Sponsor spécial", "Patrocinador especial", "Patrocinador especial"}},
   {"赞助支持", {"赞助支持", "Sponsorship", "Поддержка проекта", "贊助支援", "開発を支援", "후원", "Sponsoring", "Parrainage", "Patrocinio", "Patrocínio"}},
   {"跟随系统", {"跟随系统", "Follow system", "Как в системе", "跟隨系統", "システム設定に従う", "시스템 설정 따르기", "Systemsprache", "Langue du système", "Idioma del sistema", "Idioma do sistema"}},
   {"跟随设备设置", {"跟随设备设置", "Follow device settings", "Настройки устройства", "跟隨裝置設定", "デバイスの設定に従ってください", "기기 설정을 따르세요.", "Befolgen Sie die Geräteeinstellungen", "Suivre les paramètres de l'appareil", "Siga la configuración del dispositivo", "Siga as configurações do dispositivo"}},
@@ -562,10 +565,14 @@ inline constexpr TranslationRow kTranslationRows[] = {
   {"文件粘贴暂不可用", {"文件粘贴暂不可用", "File paste unavailable", "Вставка файлов недоступна", "檔案貼上暫不可用", "ファイルを貼り付けられません", "파일 붙여넣기를 사용할 수 없습니다", "Dateien einfügen nicht verfügbar", "Collage de fichiers indisponible", "Pegado de archivos no disponible", "Colagem de arquivos indisponível"}},
   {"请检查 FUSE 安装和挂载权限。", {"请检查 FUSE 安装和挂载权限。", "Check the FUSE installation and mount permissions.", "Проверьте установку FUSE и права на монтирование.", "請檢查 FUSE 安裝和掛載權限。", "FUSE のインストールとマウント権限を確認してください。", "FUSE 설치 및 마운트 권한을 확인하세요.", "Prüfen Sie die FUSE-Installation und die Einhängerechte.", "Vérifiez FUSE et les autorisations de montage.", "Comprueba la instalación de FUSE y los permisos de montaje.", "Verifique a instalação do FUSE e as permissões de montagem."}},
   {"可使用文件传输窗口发送文件。", {"可使用文件传输窗口发送文件。", "You can send files using the file transfer window.", "Файлы можно отправить через окно передачи файлов.", "可使用檔案傳輸視窗傳送檔案。", "ファイル転送ウィンドウから送信できます。", "파일 전송 창에서 파일을 보낼 수 있습니다.", "Senden Sie Dateien über das Dateiübertragungsfenster.", "Vous pouvez envoyer les fichiers via la fenêtre de transfert.", "Puedes enviar archivos desde la ventana de transferencia.", "Você pode enviar arquivos pela janela de transferência."}},
+  {"本端地址", {"本端地址", "Local endpoint", "Локальный адрес", "本端位址", "ローカルアドレス", "로컬 주소", "Lokale Adresse", "Adresse locale", "Dirección local", "Endereço local"}},
+  {"对端地址", {"对端地址", "Remote endpoint", "Удалённый адрес", "對端位址", "リモートアドレス", "원격 주소", "Remote-Adresse", "Adresse distante", "Dirección remota", "Endereço remoto"}},
 };
 
 struct NamedTranslation { const char* name; const char* literal; };
 inline constexpr NamedTranslation kNamedTranslations[] = {
+  {"mouse_sensitivity", "鼠标灵敏度"},
+  {"wheel_sensitivity", "滚轮灵敏度"},
   {"window_minimize", "最小化"},
   {"window_maximize", "最大化"},
   {"window_restore", "还原窗口"},
@@ -757,8 +764,6 @@ inline constexpr NamedTranslation kNamedTranslations[] = {
   {"no_such_id", "无此 ID"},
   {"about", "关于"},
   {"sponsorship_title", "赞助支持"},
-  {"sponsorship_message", "如果 CrossDesk 对你有帮助，欢迎赞助支持项目的持续开发、跨平台测试与日常维护。感谢你的支持！"},
-  {"sponsorship_dismiss_hint", "关闭后本版本不再提示，升级后再次显示。赞助入口仍在「关于」中。"},
   {"sponsor_via_afdian", "爱发电"},
   {"notification", "通知"},
   {"new_version", "新版本"},
@@ -839,6 +844,7 @@ inline constexpr NamedTranslation kNamedTranslations[] = {
   {"wayland_recommendation_message", "为便于持续使用远程桌面，建议注销当前桌面会话，在登录界面选择 X11（Xorg）会话后重新登录。"},
   {"wayland_notice_acknowledge", "我知道了"},
   {"show_main_window", "显示主界面"},
+  {"privacy_black_screen", "隐私屏使用黑屏画面"},
   {"privacy_local_unlock", "允许被控时解锁隐私屏"},
   {"privacy_screen_locked_hint", "隐私屏已开启，本机解锁已禁用"},
   {"privacy_unlocked_title", "隐私屏已被解锁"},
@@ -861,6 +867,13 @@ inline constexpr NamedTranslation kNamedTranslations[] = {
   {"windows_service_repair_success", "服务已修复并启动"},
   {"windows_service_repair_failed", "修复失败，请检查管理员权限和便携版文件后重试"},
   {"remote_service_unavailable_message", "远端 Windows 服务不可用，锁屏时无法操作。请在远端安装或修复 CrossDesk 服务。"},
+  {"video_quality_tier", "画质"},
+  {"video_quality_tier_smooth", "流畅"},
+  {"video_quality_tier_hd", "高清"},
+  {"video_quality_tier_uhd", "超清"},
+  {"video_quality_degrade_toast", "网络不佳，已自动降低画质"},
+  {"sponsorship_message", "如果 CrossDesk 对你有帮助，欢迎赞助支持项目的持续开发、跨平台测试与日常维护。感谢你的支持！"},
+  {"sponsorship_dismiss_hint", "关闭后本版本不再提示，升级后再次显示。赞助入口仍在「关于」中。"},
 };
 inline constexpr const char* kSlintLiterals[] = {
   "此端口已被占用，",
@@ -1073,10 +1086,17 @@ inline constexpr const char* kSlintLiterals[] = {
   "所有接口共用一个端口，包括 VPN。分享时请选择实际 IP；关闭后恢复各 IP 的独立端口。",
   "最小化时暂停视频",
   "控制窗口最小化时暂停接收视频，降低本机解码资源占用。",
+  "鼠标灵敏度",
+  "滚轮灵敏度",
+  "特别赞助",
+  "本端地址",
+  "对端地址",
 };
 }  // namespace detail
 
 #define CROSSDESK_LOCALIZATION_ALL(X) \
+  X(mouse_sensitivity) \
+  X(wheel_sensitivity) \
   X(window_minimize) \
   X(window_maximize) \
   X(window_restore) \
@@ -1268,8 +1288,6 @@ inline constexpr const char* kSlintLiterals[] = {
   X(no_such_id) \
   X(about) \
   X(sponsorship_title) \
-  X(sponsorship_message) \
-  X(sponsorship_dismiss_hint) \
   X(sponsor_via_afdian) \
   X(notification) \
   X(new_version) \
@@ -1350,6 +1368,7 @@ inline constexpr const char* kSlintLiterals[] = {
   X(wayland_recommendation_message) \
   X(wayland_notice_acknowledge) \
   X(show_main_window) \
+  X(privacy_black_screen) \
   X(privacy_local_unlock) \
   X(privacy_screen_locked_hint) \
   X(privacy_unlocked_title) \
@@ -1371,7 +1390,14 @@ inline constexpr const char* kSlintLiterals[] = {
   X(windows_service_repairing) \
   X(windows_service_repair_success) \
   X(windows_service_repair_failed) \
-  X(remote_service_unavailable_message)
+  X(remote_service_unavailable_message) \
+  X(video_quality_tier) \
+  X(video_quality_tier_smooth) \
+  X(video_quality_tier_hd) \
+  X(video_quality_tier_uhd) \
+  X(video_quality_degrade_toast) \
+  X(sponsorship_message) \
+  X(sponsorship_dismiss_hint)
 
 }  // namespace localization
 }  // namespace crossdesk

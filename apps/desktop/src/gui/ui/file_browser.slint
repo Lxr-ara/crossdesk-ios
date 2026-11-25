@@ -1,5 +1,6 @@
 import { ScrollView, ListView, Spinner } from "std-widgets.slint";
 import { WorkbenchStyle, WorkbenchButton, WorkbenchCard } from "workbench_controls.slint";
+import { SettingsSelect } from "settings_controls.slint";
 import { FlatSurface, UiSurface, SurfaceSeparator } from "ui_surface.slint";
 import { UiRadius } from "ui_radius.slint";
 import { RoundedLineEdit } from "rounded_line_edit.slint";
@@ -12,9 +13,58 @@ export struct BrowserEntry {
 export struct BrowserTreeEntry {
     name: string, path: string, depth: int, expanded: bool, selected: bool,
 }
+// One transfer-task row. The trailing fields mirror the UU item states
+// (file_transfer_item_arrow_left/_right + _pause, the 16 file-type families and
+// file_transfer_item_retry); every one of them is filled by C++.
 export struct BrowserTask {
     id: int, name: string, size: string, detail: string, status: string,
     progress: float, active: bool, failed: bool, can-cancel: bool, receiving: bool,
+    // 0 = outgoing (remote ← local), 1 = incoming (remote → local): picks the arrow.
+    direction: int,
+    // The row's transfer is held; the arrow switches to its paused variant.
+    paused: bool,
+    // File-type family index (0 pdf … 15 other), mapped from the extension in C++.
+    kind: int,
+    // Font Awesome glyph for `kind`, resolved in C++ so rows need no if-chain.
+    icon: string,
+    // Failed rows the manager can re-queue offer a retry button.
+    can-retry: bool,
+    // Wire id the retry callback is addressed with; 0 when not retryable.
+    retryable-id: int,
+    // First-seen wall-clock stamp shown in the time column (formatted by C++).
+    time: string,
+    // Queued rows take their label from the catalog instead of `status`.
+    queued: bool,
+}
+
+// What the peer on the other side of this pane actually serves. The window opens
+// with every management entry hidden; one `stat` reply on the open folder proves
+// the eight file-management ops exist, and any op that answers "unsupported"
+// narrows this again. Nothing the host cannot honour is ever offered.
+export struct BrowserOps {
+    supported: bool, open: bool, reveal: bool, rename: bool,
+    // `remove` carries the delete capability: `delete` is a reserved word in C++,
+    // so the generated struct field cannot take the op's own name.
+    remove: bool, mkdir: bool, refresh: bool, stat: bool,
+    // `temp-clear` carries the temp_clear op (清理临时文件): the peer sweeps the
+    // unfinished ".crossdesk-*" staging leftovers below its receive directory.
+    // It rides the same probe as the block above and is turned off again by an
+    // "unsupported" reply, so an older peer never shows the button.
+    temp-clear: bool,
+}
+
+// Menu, dialog and button wording for the file-management layer, carried in one
+// struct so the window only forwards a single property to its panes. C++ fills
+// every field from localization/catalog.json, so the ten languages share one
+// source instead of the zh/en fallback the older string properties carry.
+export struct BrowserMenuText {
+    open-text: string, reveal-text: string, rename-text: string, delete-text: string,
+    new-folder-text: string, refresh-text: string, properties-text: string,
+    name-text: string, size-text: string, modified-text: string, directory-text: string,
+    yes-text: string, no-text: string, ok-text: string, cancel-text: string,
+    // 清理临时文件 is both the toolbar button and the empty-space menu entry, so
+    // it lives here instead of in a window property of its own.
+    temp-clear-text: string,
 }
 
 component BrowserButton inherits WorkbenchButton {
@@ -186,6 +236,11 @@ component BrowserPane inherits WorkbenchCard {
     in property <[BrowserTreeEntry]> tree;
     in property <int> sort-column;
     in property <bool> sort-descending;
+    // File-management capabilities and wording of this side. The local pane
+    // leaves every capability false: mkdir/rename/delete/stat/open/reveal run on
+    // the peer, never on this computer.
+    in property <BrowserOps> ops;
+    in property <BrowserMenuText> menu;
     private property <length> modified-column-width: 72px;
     private property <length> size-column-width: 56px;
     outline-color: root.destination ? UiSurface.hover : UiSurface.edge;
@@ -200,6 +255,18 @@ component BrowserPane inherits WorkbenchCard {
     callback filter(string);
     callback toggle-hidden;
     callback sort(int);
+    // Context-menu / keyboard entry points of the file-management ops. The
+    // window decides whether the peer can honour them (see BrowserOps).
+    callback open-file(string);
+    callback reveal-entry(string);
+    callback rename-entry(string);
+    callback delete-entry(string);
+    callback new-folder;
+    callback show-properties(string);
+    callback refresh-pane;
+    // Empty-space entry without a target row: sweep the staging leftovers of the
+    // receive directory. Gated by ops.temp-clear like every other host op.
+    callback temp-clear;
     pure callback drag-data(string, int) -> data-transfer;
     callback drag-start(data-transfer, BrowserEntry);
     callback drag-move(length, length);
@@ -329,12 +396,51 @@ component BrowserPane inherits WorkbenchCard {
                                     ? (row-touch.pressed ? ControlStyle.selected-pressed.with-alpha(0.4) : row-touch.has-hover ? ControlStyle.selected-hover.with-alpha(0.35) : ControlStyle.selected.with-alpha(0.3))
                                     : row-touch.pressed ? ControlStyle.pressed.with-alpha(0.3) : row-touch.has-hover ? ControlStyle.hover.with-alpha(0.2) : transparent;
                                 opacity: root.dragging && row-touch.drag-started ? 0.55 : 1;
-                                folder-menu := ContextMenuArea {
-                                    enabled: entry.directory && root.enabled && !root.busy && root.error == "" && !root.dragging;
+                                // UU 远程 keeps the whole entry menu on the row: open,
+                                // reveal, rename, delete, new folder, refresh, properties.
+                                // Each item follows the capability the host proved, so an
+                                // unsupported op is disabled instead of failing silently.
+                                row-menu := ContextMenuArea {
+                                    enabled: root.enabled && !root.busy && root.error == "" && !root.dragging
+                                        && (entry.directory || root.ops.supported);
                                     Menu {
                                         MenuItem {
-                                            title: root.open-directory-text;
-                                            activated => { root.open-directory(entry.path); }
+                                            title: entry.directory ? root.open-directory-text : root.menu.open-text;
+                                            enabled: entry.directory || root.ops.open;
+                                            activated => {
+                                                if entry.directory { root.open-entry(index); }
+                                                else { root.open-file(entry.path); }
+                                            }
+                                        }
+                                        MenuItem {
+                                            title: root.menu.reveal-text;
+                                            enabled: root.ops.reveal;
+                                            activated => { root.reveal-entry(entry.path); }
+                                        }
+                                        MenuItem {
+                                            title: root.menu.rename-text;
+                                            enabled: root.ops.rename;
+                                            activated => { root.rename-entry(entry.path); }
+                                        }
+                                        MenuItem {
+                                            title: root.menu.delete-text;
+                                            enabled: root.ops.remove;
+                                            activated => { root.delete-entry(entry.path); }
+                                        }
+                                        MenuItem {
+                                            title: root.menu.new-folder-text;
+                                            enabled: root.ops.mkdir;
+                                            activated => { root.new-folder(); }
+                                        }
+                                        MenuItem {
+                                            title: root.menu.refresh-text;
+                                            enabled: root.ops.refresh;
+                                            activated => { root.refresh-pane(); }
+                                        }
+                                        MenuItem {
+                                            title: root.menu.properties-text;
+                                            enabled: root.ops.stat;
+                                            activated => { root.show-properties(entry.path); }
                                         }
                                     }
                                     HorizontalLayout {
@@ -371,8 +477,8 @@ component BrowserPane inherits WorkbenchCard {
                                                     self.update-drag-position();
                                                     root.drag-end();
                                                 }
-                                            } else if event.button == PointerEventButton.right && event.kind == PointerEventKind.up && folder-menu.enabled {
-                                                folder-menu.show({ x: self.mouse-x + 34px, y: self.mouse-y });
+                                            } else if event.button == PointerEventButton.right && event.kind == PointerEventKind.up && row-menu.enabled {
+                                                row-menu.show({ x: self.mouse-x + 34px, y: self.mouse-y });
                                             }
                                         }
                                         moved => {
@@ -387,6 +493,45 @@ component BrowserPane inherits WorkbenchCard {
                                         double-clicked => { if !self.drag-started { root.open-entry(index); } }
                                     }
                                     BrowserCheckBox { x: 6px; y: (parent.height - self.height) / 2; width: 24px; checked: entry.selected; label: (root.chinese ? "选择 " : "Select ") + entry.name; enabled: !entry.link && root.enabled && !root.busy && root.error == "" && !root.dragging; toggled => { root.select-entry(index); } }
+                                }
+                            }
+                        }
+                        // Empty space below the last row: the two management entries that
+                        // need no target. The area starts under the last row and collapses to
+                        // zero height once the listing fills the pane, so it can never sit on
+                        // top of a row.
+                        empty-touch := TouchArea {
+                            y: min(parent.height, root.entries.length * 28px);
+                            width: parent.width;
+                            height: max(0px, parent.height - self.y);
+                            enabled: root.enabled && !root.busy && root.error == "" && !root.dragging
+                                && root.ops.supported;
+                            mouse-cursor: default;
+                            pointer-event(event) => {
+                                if event.button == PointerEventButton.right && event.kind == PointerEventKind.up
+                                    && empty-menu.enabled {
+                                    empty-menu.show({ x: self.mouse-x, y: self.mouse-y });
+                                }
+                            }
+                        }
+                        empty-menu := ContextMenuArea {
+                            enabled: root.enabled && !root.busy && root.error == "" && !root.dragging
+                                && root.ops.supported;
+                            Menu {
+                                MenuItem {
+                                    title: root.menu.new-folder-text;
+                                    enabled: root.ops.mkdir;
+                                    activated => { root.new-folder(); }
+                                }
+                                MenuItem {
+                                    title: root.menu.temp-clear-text;
+                                    enabled: root.ops.temp-clear;
+                                    activated => { root.temp-clear(); }
+                                }
+                                MenuItem {
+                                    title: root.menu.refresh-text;
+                                    enabled: root.ops.refresh;
+                                    activated => { root.refresh-pane(); }
                                 }
                             }
                         }
@@ -495,6 +640,18 @@ export component FileBrowserWindow inherits Window {
     in property <string> send-remote-text: root.chinese ? "发送到远端" : "Send to remote";
     in property <string> clear-completed-text: root.chinese ? "清除已完成" : "Clear completed";
     in property <string> open-directory-text: root.chinese ? "打开目录" : "Open folder";
+    in property <string> pause-text: root.chinese ? "暂停" : "Pause";
+    in property <string> resume-text: root.chinese ? "继续" : "Resume";
+    in property <string> rate-limit-text: root.chinese ? "限速" : "Speed limit";
+    in property <string> rate-limit-unlimited-text: root.chinese ? "不限速" : "Unlimited";
+    in property <string> overwrite-policy-text: root.chinese ? "覆盖策略" : "Overwrite policy";
+    in property <string> auto-rename-text: root.chinese ? "自动重命名" : "Auto rename";
+    in property <string> overwrite-text: root.chinese ? "覆盖" : "Overwrite";
+    // Kept for the label set it belonged to; the third policy choice now reads
+    // 每次询问, because value 0 asks the conflict dialog instead of silently
+    // skipping the file. The value mapping stays {2, 1, 0}.
+    in property <string> skip-text: root.chinese ? "跳过" : "Skip";
+    in property <string> ask-every-time-text: root.chinese ? "每次询问" : "Ask every time";
     in property <bool> connected: true;
     in property <string> peer-name;
     in property <string> local-role;
@@ -527,12 +684,74 @@ export component FileBrowserWindow inherits Window {
     in property <[BrowserEntry]> remote-entries;
     in property <[BrowserTreeEntry]> local-tree;
     in property <[BrowserTreeEntry]> remote-tree;
+    // File-management capability and wording of each side. C++ fills them from
+    // the peer's `stat` reply and from the catalog; the local side stays
+    // all-false because the eight host ops execute on the peer, never here.
+    in property <BrowserOps> local-ops;
+    in property <BrowserOps> remote-ops;
+    in property <BrowserMenuText> menu;
     in property <[BrowserTask]> tasks;
     in property <string> task-summary;
+    // Task-list labels. The literals below are the zh/en fallback; C++ replaces
+    // them with catalog strings for all ten languages in UpdateActionLabels.
+    in property <string> start-all-text: root.chinese ? "全部开始" : "Start all";
+    in property <string> pause-all-text: root.chinese ? "全部暂停" : "Pause all";
+    in property <string> resume-all-text: root.chinese ? "全部继续" : "Resume all";
+    in property <string> clear-all-text: root.chinese ? "全部清除" : "Clear all";
+    in property <string> retry-text: root.chinese ? "重试" : "Retry";
+    in property <string> sort-name-text: root.chinese ? "按名称" : "By name";
+    in property <string> sort-size-text: root.chinese ? "按大小" : "By size";
+    in property <string> sort-time-text: root.chinese ? "按时间" : "By time";
+    // "共 {n} 项" is split at its placeholder so C++ only supplies the count.
+    in property <string> batch-total-prefix: root.chinese ? "共 " : "";
+    in property <string> batch-total-suffix: root.chinese ? " 项" : " items";
+    in property <string> completed-text: root.chinese ? "完成" : "Done";
+    in property <string> failed-text: root.chinese ? "失败" : "Failed";
+    in property <string> active-text: root.chinese ? "进行中" : "Active";
+    in property <string> queued-text: root.chinese ? "排队中" : "Queued";
+    in property <string> paused-text: root.chinese ? "已暂停" : "Paused";
+    in property <string> open-save-folder-text: root.chinese ? "打开所在文件夹" : "Open folder";
+    in property <string> change-save-path-text: root.chinese ? "修改保存路径" : "Change save path";
+    // Task-list sort state: 0 = name, 1 = size, 2 = first seen (time column).
+    // C++ owns the comparison so the rows model keeps its single update path.
+    in-out property <int> sort-column: 2;
+    in-out property <bool> sort-ascending: false;
+    // Batch rollup under the toolbar: 共 N 项 · 完成 x · 失败 y · 进行中 z.
+    in property <int> batch-total: 0;
+    in property <int> batch-completed: 0;
+    in property <int> batch-failed: 0;
+    in property <int> batch-active: 0;
     in property <string> notice;
     in property <bool> notice-error;
+    // ------------------------------------------------- file-management dialogs --
+    // 0 = none, 1 = rename, 2 = new folder, 3 = delete, 4 = properties,
+    // 5 = clean temporary files (confirmation only: title, body and note).
+    // C++ owns the meaning (target path, typed name, delete set); this file owns
+    // pixels. A failure closes the dialog and lands in `notice`: the window never
+    // keeps a modal up for a request that already finished.
+    in-out property <int> dialog-kind: 0;
+    in property <string> dialog-title;
+    in property <string> dialog-message;
+    in property <string> dialog-note;
+    in property <string> dialog-name;
+    in-out property <string> dialog-input;
+    // In-out so the editor itself clears a stale validation hint while typing.
+    in-out property <string> dialog-hint;
+    in property <string> dialog-size;
+    in property <string> dialog-modified;
+    in property <bool> dialog-directory;
+    in property <bool> dialog-input-visible;
+    in property <bool> dialog-busy;
+    in property <bool> dialog-danger;
     in property <bool> can-upload;
     in property <bool> can-download;
+    // Transfer controls sit on the window so the C++ side owns the state:
+    // transfer-active mirrors the running outbound task, transfer-paused the
+    // paused flag, and the two indices the persisted config values.
+    in property <bool> transfer-active: false;
+    in-out property <bool> transfer-paused: false;
+    in-out property <int> rate-limit-index: 0;
+    in-out property <int> overwrite-policy-index: 0;
     in property <bool> source-remote;
     in property <bool> transfer-ready;
     in property <int> selection-revision;
@@ -545,9 +764,22 @@ export component FileBrowserWindow inherits Window {
     private property <int> drop-target: -1;
     changed drag-active => { if !root.drag-active { root.drop-target = -1; } }
     in-out property <bool> tasks-expanded: false;
-    private property <length> task-list-max-height: min(144px, max(72px, root.height - 440px));
+    // The card grew by the 24px batch strip plus the 29px sort header, so the
+    // reserve absorbs exactly that much and the panes keep the same room.
+    private property <length> task-list-max-height: min(144px, max(72px, root.height - 494px));
+    // Task-row columns. Shared with the sort header so both stay aligned and
+    // the name column keeps its width at the 760px minimum window size.
+    private property <length> task-size-column-width: root.chinese ? 56px : 64px;
+    private property <length> task-time-column-width: root.chinese ? 48px : 56px;
+    private property <length> task-progress-column-width: root.width < 820px ? 72px : 100px;
+    private property <length> task-status-column-width: root.width < 820px ? 84px : 96px;
+    private property <length> task-action-column-width: 104px;
     private property <int> selected-count: root.local-selected + root.remote-selected;
     private property <bool> path-pending: root.local-path != root.local-current-path || root.remote-path != root.remote-current-path;
+    // Four toolbar buttons plus the peer name do not fit at the 760px minimum in
+    // a long language, so 清理临时文件 keeps its glyph and drops its text there;
+    // the tooltip and the accessible label still name it.
+    private property <bool> toolbar-wide: root.width >= 820px;
     private property <bool> notice-visible: false;
     changed notice => { root.notice-visible = root.notice != ""; }
     Timer {
@@ -568,9 +800,48 @@ export component FileBrowserWindow inherits Window {
     callback filter(bool, string);
     callback toggle-hidden(bool);
     callback sort(bool, int);
+    // File-management entry points. Every one is answered by file_browser_window.cpp
+    // with the host op of the same name; `remote` is false only for the local pane,
+    // where the menu entries stay disabled.
+    callback open-file(bool, string);
+    callback reveal-entry(bool, string);
+    callback rename-entry(bool, string);
+    callback delete-entry(bool, string);
+    callback new-folder(bool);
+    callback show-properties(bool, string);
+    callback refresh-pane(bool);
+    // 清理临时文件: one host op (temp_clear) with no target row, so the toolbar
+    // button and the empty-space menu entry land on the same callback.
+    callback temp-clear(bool);
+    callback dialog-accept;
+    callback dialog-cancel;
+    // Delete / F2 / F5. The window routes them to the pane the pointer last
+    // worked in and only while this window holds the keyboard focus.
+    callback keyboard-delete;
+    callback keyboard-rename;
+    callback keyboard-refresh;
     callback transfer(bool);
     callback cancel-task(int);
     callback clear-finished;
+    // Task-list polish: queue-level controls, per-item pause/retry and the two
+    // UU save-path entries. Every one is answered in file_browser_window.cpp.
+    callback sort-tasks(int);
+    callback start-all-tasks;
+    callback pause-all-tasks;
+    callback resume-all-tasks;
+    callback clear-all-tasks;
+    callback toggle-task-pause(int);
+    callback retry-task(int);
+    callback open-save-folder;
+    callback change-save-path;
+    // Pause/resume the active outbound transfer, then persist the two presets.
+    // rate-limit-changed index maps to 0/1024/4096/8192/16384/32768 KiB/s and
+    // overwrite-policy-changed index to 2/1/0: the visible order is
+    // 自动重命名 (auto rename) / 覆盖 (overwrite) / 每次询问 (ask every time), so
+    // the third choice is the one that opens the conflict dialog.
+    callback toggle-transfer-pause();
+    callback rate-limit-changed(int);
+    callback overwrite-policy-changed(int);
     pure callback drag-data(bool, string, int) -> data-transfer;
     callback drag-state(data-transfer, bool);
     callback can-drop(bool, data-transfer) -> bool;
@@ -605,7 +876,19 @@ export component FileBrowserWindow inherits Window {
         // from children whose dimensions adapt to the current window size.
         x: 0px; y: 0px; width: root.width; height: root.height;
         key-pressed(event) => {
+            // A management dialog owns the keyboard while it is up: Escape cancels
+            // it, everything else stays with its editor.
+            if root.dialog-kind != 0 {
+                if event.text == Key.Escape { root.dialog-cancel(); return accept; }
+                return reject;
+            }
             if event.text == Key.Escape { root.cancel-drag(); return accept; }
+            // UU keeps the three Explorer shortcuts on the window: Delete asks for
+            // confirmation, F2 renames the single selected entry, F5 refreshes the
+            // folder of the active side.
+            if event.text == Key.Delete { root.keyboard-delete(); return accept; }
+            if event.text == Key.F2 { root.keyboard-rename(); return accept; }
+            if event.text == Key.F5 { root.keyboard-refresh(); return accept; }
             reject
         }
         focus-lost => { if root.drag-active { root.cancel-drag(); } }
@@ -614,7 +897,9 @@ export component FileBrowserWindow inherits Window {
             HorizontalLayout {
                 height: 32px; spacing: 12px;
                 Text { text: root.chinese ? "文件传输" : "File transfer"; font-size: ImGuiFontStyle.section-title; font-weight: 600; color: WorkbenchStyle.text; vertical-alignment: center; horizontal-stretch: 1; }
-                Text { text: root.peer-name; color: WorkbenchStyle.muted; vertical-alignment: center; font-size: ImGuiFontStyle.base; overflow: elide; }
+                // Bounded so a long device name cannot push the four toolbar
+                // buttons out of the 760px minimum window width.
+                Text { width: min(self.preferred-width, 168px); text: root.peer-name; color: WorkbenchStyle.muted; vertical-alignment: center; font-size: ImGuiFontStyle.base; overflow: elide; }
                 Rectangle {
                     width: root.chinese ? 104px : 144px;
                     BrowserButton {
@@ -625,6 +910,58 @@ export component FileBrowserWindow inherits Window {
                         accessible-label: root.chinese ? "刷新双方目录" : "Refresh both folders";
                         enabled: root.connected && !root.drag-active && !root.local-busy && !root.remote-busy;
                         clicked => { root.refresh(false); root.refresh(true); }
+                    }
+                }
+                // UU keeps the receive-path entries in the transfer window toolbar
+                // (file_transfer_open_path_normal / file_transfer_modify_path_normal).
+                Rectangle {
+                    width: max(root.chinese ? 104px : 112px, open-folder-measure.preferred-width + 24px);
+                    open-folder-measure := Text {
+                        visible: false; text: root.open-save-folder-text;
+                        font-size: ImGuiFontStyle.body; font-weight: 500;
+                    }
+                    BrowserButton {
+                        y: (parent.height - self.height) / 2; width: parent.width; height: 28px; quiet: true;
+                        icon: FontAwesomeIcons.folder-open; text: root.open-save-folder-text;
+                        text-size: ImGuiFontStyle.body; tooltip: root.open-save-folder-text; tooltip-above: true; tooltip-align-left: true;
+                        accessible-label: root.open-save-folder-text;
+                        enabled: !root.drag-active;
+                        clicked => { root.open-save-folder(); }
+                    }
+                }
+                Rectangle {
+                    width: max(root.chinese ? 96px : 112px, change-path-measure.preferred-width + 24px);
+                    change-path-measure := Text {
+                        visible: false; text: root.change-save-path-text;
+                        font-size: ImGuiFontStyle.body; font-weight: 500;
+                    }
+                    BrowserButton {
+                        y: (parent.height - self.height) / 2; width: parent.width; height: 28px; quiet: true;
+                        icon: FontAwesomeIcons.pen; text: root.change-save-path-text;
+                        text-size: ImGuiFontStyle.body; tooltip: root.change-save-path-text; tooltip-above: true; tooltip-align-left: true;
+                        accessible-label: root.change-save-path-text;
+                        enabled: !root.drag-active;
+                        clicked => { root.change-save-path(); }
+                    }
+                }
+                // 清理临时文件: sweeps the peer's receive folder of unfinished
+                // staging leftovers. Next to the receive-directory controls
+                // because that is the folder it acts on, and disabled until the
+                // peer's probe proved it serves temp_clear.
+                Rectangle {
+                    width: root.toolbar-wide ? max(root.chinese ? 104px : 152px, temp-clear-measure.preferred-width + 24px) : 34px;
+                    temp-clear-measure := Text {
+                        visible: false; text: root.menu.temp-clear-text;
+                        font-size: ImGuiFontStyle.body; font-weight: 500;
+                    }
+                    BrowserButton {
+                        y: (parent.height - self.height) / 2; width: parent.width; height: 28px; quiet: true;
+                        icon: FontAwesomeIcons.trash-can;
+                        text: root.toolbar-wide ? root.menu.temp-clear-text : "";
+                        text-size: ImGuiFontStyle.body; tooltip: root.menu.temp-clear-text; tooltip-above: true; tooltip-align-left: true;
+                        accessible-label: root.menu.temp-clear-text;
+                        enabled: root.connected && root.remote-ops.temp-clear && !root.drag-active;
+                        clicked => { root.temp-clear(true); }
                     }
                 }
             }
@@ -653,6 +990,16 @@ export component FileBrowserWindow inherits Window {
                     drag-move(x, y) => { root.move-drag(x, y); }
                     drag-end => { root.finish-drag(); }
                     drag-cancel => { root.cancel-drag(); }
+                    ops: root.local-ops;
+                    menu: root.menu;
+                    open-file(path) => { root.open-file(false, path); }
+                    reveal-entry(path) => { root.reveal-entry(false, path); }
+                    rename-entry(path) => { root.rename-entry(false, path); }
+                    delete-entry(path) => { root.delete-entry(false, path); }
+                    new-folder => { root.new-folder(false); }
+                    show-properties(path) => { root.show-properties(false, path); }
+                    refresh-pane => { root.refresh-pane(false); }
+                    temp-clear => { root.temp-clear(false); }
                 }
                 remote-pane := BrowserPane {
                     width: (parent.width - 12px) / 2;
@@ -677,10 +1024,22 @@ export component FileBrowserWindow inherits Window {
                     drag-move(x, y) => { root.move-drag(x, y); }
                     drag-end => { root.finish-drag(); }
                     drag-cancel => { root.cancel-drag(); }
+                    ops: root.remote-ops;
+                    menu: root.menu;
+                    open-file(path) => { root.open-file(true, path); }
+                    reveal-entry(path) => { root.reveal-entry(true, path); }
+                    rename-entry(path) => { root.rename-entry(true, path); }
+                    delete-entry(path) => { root.delete-entry(true, path); }
+                    new-folder => { root.new-folder(true); }
+                    show-properties(path) => { root.show-properties(true, path); }
+                    refresh-pane => { root.refresh-pane(true); }
+                    temp-clear => { root.temp-clear(true); }
                 }
             }
             WorkbenchCard {
-                height: 83px + task-content.height;
+                // 48px header + 36px control strip + 24px batch strip + 32px task
+                // bar + the three 1px separators + 2px card padding.
+                height: 145px + task-content.height;
                 VerticalLayout {
                     spacing: 0px; padding: 1px;
                     HorizontalLayout {
@@ -730,6 +1089,96 @@ export component FileBrowserWindow inherits Window {
                         }
                     }
                     Rectangle { height: 1px; SurfaceSeparator { x: 12px; y: 0px; width: parent.width - 24px; } }
+                    // Transfer controls: pause/resume the running outbound task and
+                    // pick the persisted speed limit and same-name policy.
+                    HorizontalLayout {
+                        height: 36px; padding-left: 12px; padding-right: 12px; spacing: 8px;
+                        Rectangle {
+                            width: max(root.chinese ? 84px : 96px, pause-label-measure.preferred-width + 28px);
+                            pause-label-measure := Text {
+                                visible: false;
+                                text: root.transfer-paused ? root.resume-text : root.pause-text;
+                                font-size: ImGuiFontStyle.base; font-weight: 500;
+                            }
+                            BrowserButton {
+                                y: (parent.height - self.height) / 2; width: parent.width; height: 28px; quiet: true;
+                                text-size: ImGuiFontStyle.base;
+                                text: pause-label-measure.text;
+                                enabled: root.connected && root.transfer-active;
+                                clicked => { root.toggle-transfer-pause(); }
+                            }
+                        }
+                        Text {
+                            text: root.rate-limit-text; color: WorkbenchStyle.muted;
+                            font-size: ImGuiFontStyle.body; vertical-alignment: center;
+                        }
+                        Rectangle {
+                            width: 108px;
+                            SettingsSelect {
+                                y: (parent.height - self.height) / 2; width: parent.width;
+                                model: [root.rate-limit-unlimited-text, "1 MB/s", "4 MB/s", "8 MB/s", "16 MB/s", "32 MB/s"];
+                                current-index <=> root.rate-limit-index;
+                                selected(index) => { root.rate-limit-changed(index); }
+                            }
+                        }
+                        Text {
+                            text: root.overwrite-policy-text; color: WorkbenchStyle.muted;
+                            font-size: ImGuiFontStyle.body; vertical-alignment: center;
+                        }
+                        Rectangle {
+                            // 每次询问 / Ask every time is the longest of the three
+                            // policy labels; the extra width keeps it from being elided.
+                            width: 136px;
+                            SettingsSelect {
+                                y: (parent.height - self.height) / 2; width: parent.width;
+                                model: [root.auto-rename-text, root.overwrite-text, root.ask-every-time-text];
+                                current-index <=> root.overwrite-policy-index;
+                                selected(index) => { root.overwrite-policy-changed(index); }
+                            }
+                        }
+                        Rectangle { horizontal-stretch: 1; }
+                    }
+                    Rectangle { height: 1px; SurfaceSeparator { x: 12px; y: 0px; width: parent.width - 24px; } }
+                    // Batch summary + queue controls (UU: file_transfer_send_part_success,
+                    // recv_part_failed, start_all, pause_all, clear_all). The counts come
+                    // from C++; the labels come from the catalog so 10 languages keep
+                    // their own word order.
+                    HorizontalLayout {
+                        height: 24px; padding-left: 12px; padding-right: 12px; spacing: 6px;
+                        Text {
+                            horizontal-stretch: 1; vertical-alignment: center; overflow: elide;
+                            font-size: ImGuiFontStyle.body; color: WorkbenchStyle.muted;
+                            text: root.batch-total-prefix + root.batch-total + root.batch-total-suffix
+                                + " · " + root.completed-text + " " + root.batch-completed
+                                + " · " + root.failed-text + " " + root.batch-failed
+                                + " · " + root.active-text + " " + root.batch-active;
+                        }
+                        BrowserButton {
+                            width: root.chinese ? 62px : 80px; height: 20px; quiet: true; text-size: ImGuiFontStyle.body;
+                            text: root.start-all-text; accessible-label: root.start-all-text;
+                            enabled: root.batch-total > 0;
+                            clicked => { root.start-all-tasks(); }
+                        }
+                        BrowserButton {
+                            width: root.chinese ? 62px : 80px; height: 20px; quiet: true; text-size: ImGuiFontStyle.body;
+                            text: root.pause-all-text; accessible-label: root.pause-all-text;
+                            enabled: root.batch-active > 0 && !root.transfer-paused;
+                            clicked => { root.pause-all-tasks(); }
+                        }
+                        BrowserButton {
+                            width: root.chinese ? 62px : 80px; height: 20px; quiet: true; text-size: ImGuiFontStyle.body;
+                            text: root.resume-all-text; accessible-label: root.resume-all-text;
+                            enabled: root.transfer-paused;
+                            clicked => { root.resume-all-tasks(); }
+                        }
+                        BrowserButton {
+                            width: root.chinese ? 62px : 80px; height: 20px; quiet: true; text-size: ImGuiFontStyle.body;
+                            text: root.clear-all-text; accessible-label: root.clear-all-text;
+                            enabled: root.batch-total > 0;
+                            clicked => { root.clear-all-tasks(); }
+                        }
+                    }
+                    Rectangle { height: 1px; SurfaceSeparator { x: 12px; y: 0px; width: parent.width - 24px; } }
                     Rectangle {
                         height: 32px;
                         HorizontalLayout {
@@ -751,46 +1200,259 @@ export component FileBrowserWindow inherits Window {
                         }
                     }
                     task-content := Rectangle {
-                        height: root.tasks-expanded ? min(root.task-list-max-height, root.tasks.length == 0 ? 40px : task-rows.preferred-height) : 0px;
+                        // 29px sort header (separator included) plus the visible rows,
+                        // capped by the window budget so opening the list never pushes
+                        // the two panes past the bottom of the window.
+                        height: root.tasks-expanded ? min(root.task-list-max-height, 29px + max(28px, task-rows.preferred-height)) : 0px;
                         visible: root.tasks-expanded;
                         clip: true;
                         SurfaceSeparator { x: 12px; y: 0px; width: parent.width - 24px; }
-                        if root.tasks.length == 0: Text { text: root.chinese ? "暂无传输任务" : "No transfers yet"; color: WorkbenchStyle.muted; font-size: ImGuiFontStyle.base; horizontal-alignment: center; vertical-alignment: center; }
+                        // Sortable task columns (UU: file_transfer_item_header_ascending
+                        // / _descending). C++ owns the comparison and re-pushes the model.
+                        task-header := Rectangle {
+                            x: 16px; y: 1px; height: 28px;
+                            visible: root.tasks.length > 0;
+                            width: parent.width - 32px - task-list.content-gutter;
+                            HorizontalLayout {
+                                padding-left: 4px; padding-right: 4px; spacing: 8px;
+                                // Matches the 16px glyph cell plus the 16px arrow cell.
+                                Rectangle { width: 40px; }
+                                BrowserSortHeader {
+                                    horizontal-stretch: 1; chinese: root.chinese;
+                                    text: root.sort-name-text;
+                                    active: root.sort-column == 0; descending: !root.sort-ascending;
+                                    enabled: root.tasks.length > 1;
+                                    clicked => { root.sort-tasks(0); }
+                                }
+                                BrowserSortHeader {
+                                    width: root.task-size-column-width; chinese: root.chinese;
+                                    text: root.sort-size-text; right-aligned: true;
+                                    active: root.sort-column == 1; descending: !root.sort-ascending; default-descending: true;
+                                    enabled: root.tasks.length > 1;
+                                    clicked => { root.sort-tasks(1); }
+                                }
+                                BrowserSortHeader {
+                                    width: root.task-time-column-width; chinese: root.chinese;
+                                    text: root.sort-time-text; right-aligned: true;
+                                    active: root.sort-column == 2; descending: !root.sort-ascending; default-descending: true;
+                                    enabled: root.tasks.length > 1;
+                                    clicked => { root.sort-tasks(2); }
+                                }
+                                Rectangle { width: root.task-progress-column-width; }
+                                Rectangle { width: root.task-status-column-width; }
+                                Rectangle { width: root.task-action-column-width; }
+                            }
+                        }
+                        if root.tasks.length == 0: Text {
+                            y: 1px; height: max(0px, parent.height - 2px);
+                            text: root.chinese ? "暂无传输任务" : "No transfers yet";
+                            color: WorkbenchStyle.muted; font-size: ImGuiFontStyle.base;
+                            horizontal-alignment: center; vertical-alignment: center;
+                        }
                         task-list := BrowserScrollView {
-                            x: 16px; width: parent.width - 32px; height: parent.height;
+                            x: 16px; y: 29px; width: parent.width - 32px; height: max(0px, parent.height - 29px);
                             visible: root.tasks.length > 0;
                             task-rows := VerticalLayout {
-                                spacing: 2px; padding-top: 4px; padding-bottom: 4px; padding-right: task-list.content-gutter;
+                                spacing: 2px; padding-top: 2px; padding-bottom: 4px; padding-right: task-list.content-gutter;
                                 for task in root.tasks: Rectangle {
-                                    height: task.active ? 46px : 32px;
+                                    height: task.active ? 42px : 30px;
+                                    border-radius: UiRadius.control;
+                                    background: task-touch.pressed ? ControlStyle.pressed.with-alpha(0.3)
+                                        : task-touch.has-hover ? ControlStyle.hover.with-alpha(0.2) : transparent;
+                                    // Declared first so the row buttons stay on top of it.
+                                    task-touch := TouchArea {
+                                        x: 0px; y: 0px; width: parent.width; height: parent.height;
+                                        mouse-cursor: default;
+                                    }
                                     HorizontalLayout {
-                                        spacing: 12px;
-                                        Text { width: 18px; text: task.receiving ? "↓" : "↑"; color: WorkbenchStyle.accent; font-size: 16px; vertical-alignment: center; }
+                                        padding-left: 4px; padding-right: 4px; spacing: 8px;
+                                        // File-type glyph: the 16 UU families, resolved in C++.
+                                        Text {
+                                            width: 16px; height: parent.height; text: task.icon;
+                                            color: task.failed ? UiSurface.error : ControlStyle.icon;
+                                            font-family: "Font Awesome 6 Free"; font-weight: 900; font-size: 13px;
+                                            horizontal-alignment: center; vertical-alignment: center;
+                                            accessible-role: none;
+                                        }
+                                        // Direction arrow; when paused it carries the pause
+                                        // badge (UU: item_arrow_left_pause / arrow_right_pause).
+                                        Rectangle {
+                                            width: 16px; height: parent.height;
+                                            Text {
+                                                x: 0px; y: 0px; width: 16px; height: parent.height;
+                                                text: task.direction == 1 ? "\u{f060}" : "\u{f061}";
+                                                color: task.paused ? WorkbenchStyle.muted : WorkbenchStyle.accent;
+                                                font-family: "Font Awesome 6 Free"; font-weight: 900; font-size: 11px;
+                                                horizontal-alignment: center; vertical-alignment: center;
+                                                accessible-role: none;
+                                            }
+                                            if task.paused: Text {
+                                                x: 7px; y: 1px; width: 9px; height: 9px;
+                                                text: "\u{f04c}"; color: WorkbenchStyle.muted;
+                                                font-family: "Font Awesome 6 Free"; font-weight: 900; font-size: 7px;
+                                                horizontal-alignment: center; vertical-alignment: center;
+                                                accessible-label: root.paused-text;
+                                            }
+                                        }
                                         VerticalLayout {
-                                            padding-top: 5px; padding-bottom: 5px; spacing: 3px; alignment: center; horizontal-stretch: 1;
-                                            Rectangle {
-                                                height: 16px;
-                                                task-name := Text {
-                                                    x: 0px;
-                                                    width: min(self.preferred-width, max(0px, parent.width - task-size.preferred-width - 8px));
-                                                    height: parent.height; text: task.name; color: WorkbenchStyle.text;
-                                                    font-size: ImGuiFontStyle.base; overflow: elide; vertical-alignment: center;
-                                                }
-                                                task-size := Text {
-                                                    x: task-name.width + 8px; width: self.preferred-width; height: parent.height;
-                                                    text: task.size; color: WorkbenchStyle.muted;
-                                                    font-size: ImGuiFontStyle.body; vertical-alignment: center;
-                                                }
+                                            padding-top: 3px; padding-bottom: 3px; spacing: 2px; alignment: center; horizontal-stretch: 1;
+                                            Text {
+                                                height: 15px; text: task.name; color: WorkbenchStyle.text;
+                                                font-size: ImGuiFontStyle.base; overflow: elide; vertical-alignment: center;
                                             }
                                             if task.active: Text { text: task.detail; color: WorkbenchStyle.muted; font-size: ImGuiFontStyle.body; overflow: elide; }
                                         }
-                                        Rectangle { width: root.width < 820px ? 80px : 110px; Rectangle { x: 0px; y: (parent.height - 4px) / 2; width: parent.width; height: 4px; background: WorkbenchStyle.separator; border-radius: 2px; Rectangle { x: 0px; y: 0px; width: parent.width * task.progress; height: 4px; border-radius: 2px; background: task.failed ? UiSurface.error : WorkbenchStyle.accent; } } }
-                                        Text { width: root.width < 820px ? 92px : 110px; text: task.status; color: task.failed ? UiSurface.error : WorkbenchStyle.muted; font-size: ImGuiFontStyle.body; vertical-alignment: center; horizontal-alignment: right; }
-                                        Rectangle { width: 56px; if task.can-cancel: BrowserButton { y: (parent.height - self.height) / 2; width: 56px; height: 26px; text: root.chinese ? "取消" : "Cancel"; text-size: ImGuiFontStyle.body; quiet: true; clicked => { root.cancel-task(task.id); } } }
+                                        Text {
+                                            width: root.task-size-column-width; text: task.size; color: WorkbenchStyle.muted;
+                                            font-size: ImGuiFontStyle.body; vertical-alignment: center; horizontal-alignment: right; overflow: elide;
+                                        }
+                                        Text {
+                                            width: root.task-time-column-width; text: task.time; color: WorkbenchStyle.muted;
+                                            font-size: ImGuiFontStyle.body; vertical-alignment: center; horizontal-alignment: right; overflow: elide;
+                                        }
+                                        Rectangle {
+                                            width: root.task-progress-column-width;
+                                            Rectangle {
+                                                x: 0px; y: (parent.height - 4px) / 2; width: parent.width; height: 4px;
+                                                background: WorkbenchStyle.separator; border-radius: 2px;
+                                                Rectangle { x: 0px; y: 0px; width: parent.width * task.progress; height: 4px; border-radius: 2px; background: task.failed ? UiSurface.error : WorkbenchStyle.accent; }
+                                            }
+                                        }
+                                        Text {
+                                            width: root.task-status-column-width;
+                                            // Paused / failed / queued labels come from the catalog;
+                                            // progress percentages stay pre-composed by C++.
+                                            text: task.paused ? root.paused-text
+                                                : task.failed ? (root.failed-text + (task.can-retry ? " · " + root.retry-text : ""))
+                                                : task.queued ? root.queued-text : task.status;
+                                            color: task.failed ? UiSurface.error : WorkbenchStyle.muted;
+                                            font-size: ImGuiFontStyle.body; vertical-alignment: center;
+                                            horizontal-alignment: right; overflow: elide;
+                                        }
+                                        HorizontalLayout {
+                                            width: root.task-action-column-width; spacing: 2px; alignment: end;
+                                            if task.active: BrowserButton {
+                                                width: 24px; height: 24px; quiet: true;
+                                                icon: task.paused ? "\u{f04b}" : "\u{f04c}";
+                                                tooltip: task.paused ? root.resume-text : root.pause-text;
+                                                tooltip-above: true; tooltip-align-left: true;
+                                                accessible-label: self.tooltip;
+                                                clicked => { root.toggle-task-pause(task.id); }
+                                            }
+                                            if task.can-retry: BrowserButton {
+                                                width: 24px; height: 24px; quiet: true; icon: "\u{f01e}";
+                                                tooltip: root.retry-text; tooltip-above: true; tooltip-align-left: true;
+                                                accessible-label: root.retry-text;
+                                                clicked => { root.retry-task(task.retryable-id); }
+                                            }
+                                            if task.can-cancel: BrowserButton {
+                                                width: 56px; height: 24px; quiet: true; text-size: ImGuiFontStyle.body;
+                                                text: root.chinese ? "取消" : "Cancel";
+                                                clicked => { root.cancel-task(task.id); }
+                                            }
+                                        }
                                     }
                                 }
                             }
                         }
+                    }
+                }
+            }
+        }
+    }
+    // ------------------------------------------------------- management modal --
+    // Rename / new folder / delete / properties share one modal. The height adds
+    // up the blocks that are actually present, so the buttons never clip in a
+    // long language.
+    if root.dialog-kind != 0: Rectangle {
+        z: 90;
+        width: parent.width; height: parent.height;
+        background: #00000042;
+        TouchArea {}
+        dialog-card := FlatSurface {
+            x: (parent.width - self.width) / 2;
+            y: (parent.height - self.height) / 2;
+            width: min(392px, parent.width - 56px);
+            height: 148px
+                + (root.dialog-message == "" ? 0px : 42px)
+                + (root.dialog-note == "" ? 0px : 40px)
+                + (root.dialog-input-visible ? 38px : 0px)
+                + (root.dialog-hint == "" ? 0px : 30px)
+                + (root.dialog-kind == 4 ? 108px : 0px)
+                + (root.dialog-kind == 4 || root.dialog-name == "" ? 0px : 26px);
+            background: WorkbenchStyle.surface;
+            outline-color: UiSurface.edge;
+            border-radius: UiRadius.surface;
+            VerticalLayout {
+                padding: 16px; spacing: 8px;
+                Text {
+                    height: 24px; text: root.dialog-title;
+                    color: WorkbenchStyle.text; font-size: ImGuiFontStyle.prominent; font-weight: 600;
+                    vertical-alignment: center; overflow: elide;
+                }
+                // 属性: the four fields UU shows, each fed by the `stat` reply.
+                if root.dialog-kind == 4: VerticalLayout {
+                    spacing: 4px;
+                    HorizontalLayout {
+                        height: 22px;
+                        Text { width: 96px; text: root.menu.name-text; color: WorkbenchStyle.muted; font-size: ImGuiFontStyle.base; vertical-alignment: center; }
+                        Text { horizontal-stretch: 1; text: root.dialog-name; color: WorkbenchStyle.text; font-size: ImGuiFontStyle.base; vertical-alignment: center; overflow: elide; }
+                    }
+                    HorizontalLayout {
+                        height: 22px;
+                        Text { width: 96px; text: root.menu.size-text; color: WorkbenchStyle.muted; font-size: ImGuiFontStyle.base; vertical-alignment: center; }
+                        Text { horizontal-stretch: 1; text: root.dialog-size; color: WorkbenchStyle.text; font-size: ImGuiFontStyle.base; vertical-alignment: center; overflow: elide; }
+                    }
+                    HorizontalLayout {
+                        height: 22px;
+                        Text { width: 96px; text: root.menu.modified-text; color: WorkbenchStyle.muted; font-size: ImGuiFontStyle.base; vertical-alignment: center; }
+                        Text { horizontal-stretch: 1; text: root.dialog-modified; color: WorkbenchStyle.text; font-size: ImGuiFontStyle.base; vertical-alignment: center; overflow: elide; }
+                    }
+                    HorizontalLayout {
+                        height: 22px;
+                        Text { width: 96px; text: root.menu.directory-text; color: WorkbenchStyle.muted; font-size: ImGuiFontStyle.base; vertical-alignment: center; }
+                        Text { horizontal-stretch: 1; text: root.dialog-directory ? root.menu.yes-text : root.menu.no-text; color: WorkbenchStyle.text; font-size: ImGuiFontStyle.base; vertical-alignment: center; }
+                    }
+                }
+                if root.dialog-message != "": Text {
+                    height: 34px; text: root.dialog-message;
+                    color: WorkbenchStyle.text; font-size: ImGuiFontStyle.base; wrap: word-wrap;
+                }
+                if root.dialog-kind != 4 && root.dialog-name != "": Text {
+                    height: 18px; text: root.dialog-name;
+                    color: WorkbenchStyle.text; font-size: ImGuiFontStyle.base; font-weight: 600; overflow: elide;
+                }
+                if root.dialog-note != "": Text {
+                    height: 32px; text: root.dialog-note;
+                    color: WorkbenchStyle.muted; font-size: ImGuiFontStyle.body; wrap: word-wrap;
+                }
+                if root.dialog-input-visible: name-field := RoundedLineEdit {
+                    height: 30px; text <=> root.dialog-input; tint-opacity: 0.2;
+                    enabled: !root.dialog-busy;
+                    accepted => { root.dialog-accept(); }
+                    edited => { root.dialog-hint = ""; }
+                    // Grab the keyboard as soon as the field appears, like the
+                    // inline editor UU opens on F2.
+                    init => { self.focus(); }
+                }
+                if root.dialog-hint != "": Text {
+                    height: 22px; text: root.dialog-hint;
+                    color: UiSurface.error; font-size: ImGuiFontStyle.body; wrap: word-wrap;
+                }
+                Rectangle { vertical-stretch: 1; }
+                HorizontalLayout {
+                    height: 30px; alignment: end; spacing: 8px;
+                    BrowserButton {
+                        width: 88px; height: 30px; quiet: true; text-size: ImGuiFontStyle.base;
+                        text: root.menu.cancel-text;
+                        clicked => { root.dialog-cancel(); }
+                    }
+                    BrowserButton {
+                        width: 88px; height: 30px; text-size: ImGuiFontStyle.base;
+                        primary: !root.dialog-danger; destructive: root.dialog-danger;
+                        enabled: !root.dialog-busy;
+                        text: root.menu.ok-text;
+                        clicked => { root.dialog-accept(); }
                     }
                 }
             }

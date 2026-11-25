@@ -199,6 +199,26 @@ int ConfigCenter::Load() {
   trusted_devices_only_.store(
       ini_->GetValue(section_, "trusted_devices_only", nullptr) != nullptr &&
       ini_->GetBoolValue(section_, "trusted_devices_only", true));
+  photo_group_by_date_.store(
+      ini_->GetBoolValue(section_, "photo_group_by_date", true));
+  remote_cursor_style_.store(
+      std::clamp(static_cast<int>(ini_->GetLongValue(section_, "remote_cursor_style", 0)), 0, 1));
+  remote_mouse_mode_.store(
+      std::clamp(static_cast<int>(ini_->GetLongValue(section_, "remote_mouse_mode", 0)), 0, 2));
+  game_mouse_speed_.store(
+      std::clamp(static_cast<int>(ini_->GetLongValue(section_, "game_mouse_speed", 10)), 5, 30));
+  transfer_rate_limit_kbps_.store(std::clamp(
+      static_cast<int>(ini_->GetLongValue(section_, "transfer_rate_limit_kbps", 0)),
+      0, kTransferRateLimitMaxKbps));
+  transfer_overwrite_policy_.store(std::clamp(
+      static_cast<int>(ini_->GetLongValue(section_, "transfer_overwrite_policy", 2)), 0, 2));
+  // 断点续传开关：0/1，默认 1（发送前先用 op=resume 问对端已有多少字节）。
+  transfer_resume_enabled_.store(std::clamp(
+      static_cast<int>(ini_->GetLongValue(section_, "transfer_resume_enabled", 1)), 0, 1));
+  // 画质档位：0/1/2，默认 2（超清）。手工改坏的值按默认档处理，再夹取到 0..2。
+  video_quality_preset_.store(video_quality::ParseVideoQualityPreset(
+      ini_->GetValue(section_, video_quality::kVideoQualityPresetKey, nullptr),
+      video_quality::kDefaultVideoQualityPreset));
   save_remote_previews_.store(
       ini_->GetBoolValue(section_, "save_remote_previews", true));
   pause_video_when_minimized_.store(
@@ -308,6 +328,24 @@ int ConfigCenter::Save() {
   ini_->SetBoolValue(section_, "trusted_devices_only", trusted_devices_only_.load());
   ini_->SetBoolValue(section_, "save_remote_previews",
                     save_remote_previews_.load());
+  ini_->SetBoolValue(section_, "photo_group_by_date",
+                    photo_group_by_date_.load());
+  ini_->SetValue(section_, "remote_cursor_style",
+                 std::to_string(remote_cursor_style_.load()).c_str());
+  ini_->SetValue(section_, "remote_mouse_mode",
+                 std::to_string(remote_mouse_mode_.load()).c_str());
+  ini_->SetValue(section_, "game_mouse_speed",
+                 std::to_string(game_mouse_speed_.load()).c_str());
+  ini_->SetValue(section_, "transfer_rate_limit_kbps",
+                 std::to_string(transfer_rate_limit_kbps_.load()).c_str());
+  ini_->SetValue(section_, "transfer_overwrite_policy",
+                 std::to_string(transfer_overwrite_policy_.load()).c_str());
+  ini_->SetValue(section_, "transfer_resume_enabled",
+                 std::to_string(transfer_resume_enabled_.load()).c_str());
+  ini_->SetValue(section_, video_quality::kVideoQualityPresetKey,
+                 video_quality::FormatVideoQualityPreset(
+                     video_quality_preset_.load())
+                     .c_str());
   ini_->SetBoolValue(section_, "pause_video_when_minimized",
                     pause_video_when_minimized_.load());
   ini_->SetBoolValue(section_, "portable_service_prompt_suppressed",
@@ -616,6 +654,112 @@ int ConfigCenter::SetSaveRemotePreviews(bool enabled) {
   }
   save_remote_previews_.store(enabled);
   return 0;
+}
+
+int ConfigCenter::SetPhotoGroupByDate(bool enabled) {
+  if (StoreValues({{"photo_group_by_date", enabled ? "true" : "false"}}) != 0) {
+    return -1;
+  }
+  photo_group_by_date_.store(enabled);
+  return 0;
+}
+
+bool ConfigCenter::IsPhotoGroupByDate() const {
+  return photo_group_by_date_.load();
+}
+
+int ConfigCenter::SetRemoteCursorStyle(int style) {
+  const auto clamped = std::clamp(style, 0, 1);
+  if (StoreValues({{"remote_cursor_style", std::to_string(clamped).c_str()}}) != 0) {
+    return -1;
+  }
+  remote_cursor_style_.store(clamped);
+  return 0;
+}
+
+int ConfigCenter::GetRemoteCursorStyle() const {
+  return remote_cursor_style_.load();
+}
+
+int ConfigCenter::SetRemoteMouseMode(int mode) {
+  const auto clamped = std::clamp(mode, 0, 2);
+  if (StoreValues({{"remote_mouse_mode", std::to_string(clamped).c_str()}}) != 0) {
+    return -1;
+  }
+  remote_mouse_mode_.store(clamped);
+  return 0;
+}
+
+int ConfigCenter::GetRemoteMouseMode() const {
+  return remote_mouse_mode_.load();
+}
+
+int ConfigCenter::SetGameMouseSpeed(int tenths) {
+  const auto clamped = std::clamp(tenths, 5, 30);
+  if (StoreValues({{"game_mouse_speed", std::to_string(clamped).c_str()}}) != 0) {
+    return -1;
+  }
+  game_mouse_speed_.store(clamped);
+  return 0;
+}
+
+int ConfigCenter::GetGameMouseSpeed() const {
+  return game_mouse_speed_.load();
+}
+
+int ConfigCenter::SetTransferRateLimitKbps(int kbps) {
+  const auto clamped = std::clamp(kbps, 0, kTransferRateLimitMaxKbps);
+  if (StoreValues({{"transfer_rate_limit_kbps", std::to_string(clamped).c_str()}}) != 0) {
+    return -1;
+  }
+  transfer_rate_limit_kbps_.store(clamped);
+  return 0;
+}
+
+int ConfigCenter::GetTransferRateLimitKbps() const {
+  return transfer_rate_limit_kbps_.load();
+}
+
+int ConfigCenter::SetTransferOverwritePolicy(int policy) {
+  const auto clamped = std::clamp(policy, 0, 2);
+  if (StoreValues({{"transfer_overwrite_policy", std::to_string(clamped).c_str()}}) != 0) {
+    return -1;
+  }
+  transfer_overwrite_policy_.store(clamped);
+  return 0;
+}
+
+int ConfigCenter::GetTransferOverwritePolicy() const {
+  return transfer_overwrite_policy_.load();
+}
+
+// 断点续传开关，默认开。关掉之后所有发送一律从 0 开始，等于回到老行为。
+int ConfigCenter::SetTransferResumeEnabled(bool enabled) {
+  const auto value = enabled ? 1 : 0;
+  if (StoreValues({{"transfer_resume_enabled", std::to_string(value).c_str()}}) != 0) {
+    return -1;
+  }
+  transfer_resume_enabled_.store(value);
+  return 0;
+}
+
+bool ConfigCenter::GetTransferResumeEnabled() const {
+  return transfer_resume_enabled_.load() != 0;
+}
+
+// 画质档位：0 流畅 / 1 高清 / 2 超清，越界夹取，写入同一份 ini。
+int ConfigCenter::SetVideoQualityPreset(int preset) {
+  const int clamped = video_quality::ClampPreset(preset);
+  if (StoreValues({{video_quality::kVideoQualityPresetKey,
+                    video_quality::FormatVideoQualityPreset(clamped)}}) != 0) {
+    return -1;
+  }
+  video_quality_preset_.store(clamped);
+  return 0;
+}
+
+int ConfigCenter::GetVideoQualityPreset() const {
+  return video_quality_preset_.load();
 }
 
 bool ConfigCenter::IsSaveRemotePreviews() const {

@@ -14,6 +14,8 @@
 #include <utility>
 #include <string>
 
+#include <video_quality_preset.h>
+
 
 namespace crossdesk {
 
@@ -59,6 +61,21 @@ class ConfigCenter {
   int SetPortableServicePromptSuppressed(bool suppressed);
   int SetSponsorshipPromptDismissedVersion(const std::string& version);
   int SetFileTransferSavePath(const std::string& path);
+  int SetPhotoGroupByDate(bool enabled);
+  // 0 = UU-style controller-drawn cursor, 1 = system cursor shapes.
+  int SetRemoteCursorStyle(int style);
+  // 0 = smart, 1 = game (relative), 2 = emulation (absolute, system cursor).
+  int SetRemoteMouseMode(int mode);
+  // Game mouse speed in tenths: 5..30, 10 = 1.0x.
+  int SetGameMouseSpeed(int tenths);
+  // Outbound file transfer cap in KiB/s, 0 = unlimited.
+  int SetTransferRateLimitKbps(int kbps);
+  // 0 = ask/skip, 1 = overwrite, 2 = rename with a " (1)" suffix.
+  int SetTransferOverwritePolicy(int policy);
+  // 断点续传：发送前先用 op=resume 问对端已有多少字节（1 = 开，0 = 始终从 0 发）。
+  int SetTransferResumeEnabled(bool enabled);
+  // 画质档位：0 = 流畅, 1 = 高清, 2 = 超清（越界值夹取到 0..2）。
+  int SetVideoQualityPreset(int preset);
 
   // read config
 
@@ -88,6 +105,15 @@ class ConfigCenter {
   bool IsPortableServicePromptSuppressed() const;
   std::string GetSponsorshipPromptDismissedVersion() const;
   std::string GetFileTransferSavePath() const;
+  bool IsPhotoGroupByDate() const;
+  int GetRemoteCursorStyle() const;
+  int GetRemoteMouseMode() const;
+  int GetGameMouseSpeed() const;
+  int GetTransferRateLimitKbps() const;
+  int GetTransferOverwritePolicy() const;
+  bool GetTransferResumeEnabled() const;
+  // 0 = 流畅, 1 = 高清, 2 = 超清。
+  int GetVideoQualityPreset() const;
 
   int Load();
   int Save();
@@ -128,6 +154,22 @@ class ConfigCenter {
   std::atomic<bool> trusted_devices_only_{false};
   std::atomic<bool> save_remote_previews_{true};
   std::atomic<bool> pause_video_when_minimized_{true};
+  // Received photos land in <save path>/Photos/<YYYY-MM> when enabled.
+  std::atomic<bool> photo_group_by_date_{true};
+  // 0 = UU-style controller cursor overlay (default), 1 = system cursors.
+  std::atomic<int> remote_cursor_style_{0};
+  // Smart / game / emulation, and the game-mouse speed in tenths.
+  std::atomic<int> remote_mouse_mode_{0};
+  std::atomic<int> game_mouse_speed_{10};
+  // Outbound cap in KiB/s (0 = unlimited, 1 GiB/s ceiling) and the receive
+  // side conflict policy: 0 = ask/skip, 1 = overwrite, 2 = rename " (1)".
+  static constexpr int kTransferRateLimitMaxKbps = 1048576;
+  std::atomic<int> transfer_rate_limit_kbps_{0};
+  std::atomic<int> transfer_overwrite_policy_{2};
+  // 断点续传开关，0/1，默认开。
+  std::atomic<int> transfer_resume_enabled_{1};
+  // UU 画质档位 0/1/2，默认 2（超清），与改动前的会话默认画质一致。
+  std::atomic<int> video_quality_preset_{video_quality::kDefaultVideoQualityPreset};
   bool portable_service_prompt_suppressed_ = false;
   std::string sponsorship_prompt_dismissed_version_;
   std::string file_transfer_save_path_ = "";

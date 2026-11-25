@@ -232,6 +232,21 @@ static bool IsDaemonChild(int argc, char* argv[]) {
   return false;
 }
 
+// Opt-in side by side runs. A development or portable copy can coexist with the
+// installed release by exporting CROSSDESK_INSTANCE_NAME and
+// CROSSDESK_PROFILE_NAME; without them both stay "CrossDesk".
+static std::string InstanceApplicationName() {
+  const auto* name = std::getenv("CROSSDESK_INSTANCE_NAME");
+  if (name && crossdesk::platform::ValidInstanceApplication(name)) return name;
+  return "CrossDesk";
+}
+
+static std::string ProfileName() {
+  const auto* name = std::getenv("CROSSDESK_PROFILE_NAME");
+  if (name && crossdesk::platform::ValidInstanceApplication(name)) return name;
+  return "CrossDesk";
+}
+
 static crossdesk::platform::InstanceResult AcquireInstance(
     crossdesk::platform::SingleInstanceGuard& guard,
     crossdesk::platform::InstanceRole role) {
@@ -250,7 +265,7 @@ static int ExitForExistingInstance(
   if (interactive_launch &&
       result == crossdesk::platform::InstanceResult::kAlreadyRunning) {
     std::string error;
-    if (!crossdesk::platform::RequestInstanceActivation(error)) {
+    if (!crossdesk::platform::RequestInstanceActivation(error, InstanceApplicationName())) {
       std::cerr << error << '\n';
 #ifdef _WIN32
       MessageBoxW(nullptr,
@@ -266,7 +281,7 @@ static int ExitForExistingInstance(
 
 static int RunApplication(int argc, char* argv[]) {
   // The instance guards are held before any configuration or logger is opened.
-  auto path_manager = std::make_unique<crossdesk::PathManager>("CrossDesk");
+  auto path_manager = std::make_unique<crossdesk::PathManager>(ProfileName());
   crossdesk::InitLogger(path_manager->GetLogPath().string());
 
 #ifdef _WIN32
@@ -449,8 +464,8 @@ int main(int argc, char* argv[]) {
   }
 #endif
   using crossdesk::platform::InstanceRole;
-  crossdesk::platform::SingleInstanceGuard launcher_instance;
-  crossdesk::platform::SingleInstanceGuard client_instance;
+  crossdesk::platform::SingleInstanceGuard launcher_instance(InstanceApplicationName());
+  crossdesk::platform::SingleInstanceGuard client_instance(InstanceApplicationName());
   if (!IsDaemonChild(argc, argv)) {
     const auto result = AcquireInstance(launcher_instance, InstanceRole::kLauncher);
     if (result != InstanceResult::kAcquired)

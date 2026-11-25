@@ -36,11 +36,11 @@ class CursorPresentation {
     system_hidden_ = state.render_mode == CursorRenderMode::hidden &&
                      state.hidden_reason == CursorHiddenReason::system_hidden;
     if (separate) {
-      mac_locator_allowed_ = state.shape != RemoteCursorShape::none;
+      locator_allowed_ = state.shape != RemoteCursorShape::none;
     } else if (!system_hidden_) {
       // Embedded cursors and other hiding policies end the separate-cursor
       // history. A later system_hidden sample must not revive that overlay.
-      mac_locator_allowed_ = false;
+      locator_allowed_ = false;
     }
     // Old senders cannot distinguish embedded from hidden. Only explicit
     // metadata from a new sender can establish the no-device compatibility
@@ -57,17 +57,15 @@ class CursorPresentation {
   void NoteInput(uint64_t now) { last_input_ = now; }
 
   RemoteCursorShape Resolve(uint64_t now, HostPlatform remote_platform) {
+    (void)remote_platform;
     if (!stale_at_) return RemoteCursorShape::default_cursor;
 
-    // macOS can keep its system cursor hidden after typing even while remote
-    // mouse events move it. Keep a previously separate desktop locator across
-    // those heartbeats; the video has no pointer to fall back to. On a new
-    // connection, use an arrow until the first visible shape arrives. The
-    // protocol cannot distinguish typing from other system_hidden cases;
-    // restrict this policy to identified Mac hosts and stop on any explicit
-    // embedded cursor or other hiding policy.
-    if (remote_platform == HostPlatform::MacOS && system_hidden_ &&
-        mac_locator_allowed_) {
+    // Smart mouse, all platforms: while the host reports its own cursor as
+    // hidden (typing, system hidden, no pointing device) the video has no
+    // pointer to show, so keep drawing the last visible shape instead of
+    // switching to the OS arrow. Any explicit embedded cursor or other hiding
+    // policy ends this state through Observe().
+    if (system_hidden_ && locator_allowed_) {
       return last_visible_shape_;
     }
 
@@ -86,7 +84,7 @@ class CursorPresentation {
  private:
   bool sample_unavailable_ = false;
   bool system_hidden_ = false;
-  bool mac_locator_allowed_ = true;
+  bool locator_allowed_ = true;
   bool no_device_ = false;
   bool fallback_engaged_ = false;
   std::optional<uint64_t> stale_at_;

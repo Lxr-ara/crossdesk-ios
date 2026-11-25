@@ -31,6 +31,7 @@
 #if _WIN32
 #include "interactive_state.h"
 #include "service_host.h"
+#include "remote_input_gate.h"
 #endif
 
 namespace crossdesk {
@@ -425,6 +426,7 @@ void PeerEventHandler::DispatchConnectionStatus(MiniRtcConnectionStatus status,
         }
         props->traversal_mode_ = MiniRtcTraversalMode::MiniRtcTraversalUnknown;
         props->enable_mouse_control_ = false;
+  SetRemoteInputAllowed(false);
         props->preview_subscription_supported_ = false;
         props->preview_resolution_supported_ = false;
         props->preview_fps15_supported_ = false;
@@ -682,6 +684,8 @@ std::string GuiRuntime::BuildHostInformation(bool advertise_trust,
   action.i.supports_deskhub_fps15 = true;
   action.i.supports_deskhub_bandwidth = true;
   action.i.supports_file_browser = UserSessionFeaturesAvailable();
+  // Photo albums reuse the file browser RPC and the reliable file stream.
+  action.i.supports_photo_gallery = UserSessionFeaturesAvailable();
 #ifndef __OHOS__
   action.i.supports_file_clipboard = UserSessionFeaturesAvailable();
   action.i.file_clipboard_version = action.i.supports_file_clipboard ? 2 : 0;

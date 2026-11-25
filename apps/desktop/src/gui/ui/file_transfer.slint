@@ -1,0 +1,162 @@
+// 收端覆盖冲突的提问窗口。
+//
+// 传输窗口未必开着（一次接收可以在远端窗口都不在屏幕上的时候到达），所以这个
+// 提示自成一个无边框小窗，做法与 file_transfer_notification.slint 一致：C++
+// 端（conflict_dialog_host.cpp）在 UI 定时器里创建/显示它，按钮回调再把答案交
+// 给阻塞在接收线程上的那次询问。
+import { DialogSurface, FontAwesomeIcons, IconButton, ImGuiFontStyle } from "common.slint";
+import { SurfaceSeparator, UiSurface } from "ui_surface.slint";
+import { WorkbenchButton, WorkbenchStyle } from "workbench_controls.slint";
+
+export component ConflictDialog inherits Window {
+    title: "CrossDesk";
+    icon: @image-url("../../../resources/linux/crossdesk_256x256.png");
+    preferred-width: 500px;
+    preferred-height: 258px;
+    no-frame: true;
+    always-on-top: true;
+    background: transparent;
+    default-font-size: ImGuiFontStyle.base;
+
+    in property <string> heading;
+    in property <string> message;
+    in property <string> file-name;
+    in property <string> file-size;
+    in property <string> folder;
+    // 四个按钮的文案都由 C++ 从 localization 目录取，十种语言只有一个来源。
+    in property <string> skip-text: "跳过";
+    in property <string> overwrite-text: "覆盖";
+    in property <string> rename-text: "重命名";
+    in property <string> apply-all-text: "全部应用";
+    // 「全部应用」是批次级的闩：打开之后，下面三个选择对本次批量剩下的文件一起
+    // 生效（C++ 每次显示新问题时把它重置成关闭）。
+    in-out property <bool> apply-all: false;
+    // 0 = 跳过，1 = 覆盖，2 = 重命名；是否作用于整批由 apply-all 决定。
+    callback chosen(int);
+    callback dismissed;
+
+    // 默认焦点落在「跳过」上：回车就是跳过这一个文件。
+    forward-focus: skip-button;
+    keys := FocusScope {
+        x: 0px; y: 0px; width: root.width; height: root.height;
+        key-pressed(event) => {
+            // Esc 只回答「跳过这个文件」；「全部跳过」必须显式点按钮才会出现。
+            if event.text == Key.Escape {
+                root.dismissed();
+                return accept;
+            }
+            // 焦点不在按钮上时，回车/空格等同于默认按钮。
+            if event.text == Key.Return || event.text == " " {
+                root.chosen(0);
+                return accept;
+            }
+            reject
+        }
+        DialogSurface {
+            width: parent.width; height: parent.height;
+            background: WorkbenchStyle.surface;
+            outline-color: UiSurface.edge;
+            VerticalLayout {
+                padding: 16px;
+                spacing: 8px;
+                HorizontalLayout {
+                    height: 26px;
+                    spacing: 8px;
+                    Text {
+                        horizontal-stretch: 1;
+                        text: root.heading;
+                        color: WorkbenchStyle.text;
+                        font-size: ImGuiFontStyle.prominent;
+                        font-weight: 600;
+                        vertical-alignment: center;
+                        overflow: elide;
+                    }
+                    IconButton {
+                        width: 26px; height: 26px;
+                        icon: FontAwesomeIcons.xmark; icon-size: 13px;
+                        icon-color: WorkbenchStyle.muted;
+                        hover-background: WorkbenchStyle.hover-surface;
+                        pressed-background: WorkbenchStyle.pressed-surface;
+                        clicked => { root.dismissed(); }
+                    }
+                }
+                SurfaceSeparator {
+                    height: 1px;
+                    outline-color: UiSurface.separator;
+                }
+                Text {
+                    height: 18px;
+                    text: root.file-name;
+                    color: WorkbenchStyle.text;
+                    font-size: ImGuiFontStyle.base;
+                    font-weight: 600;
+                    vertical-alignment: center;
+                    overflow: elide;
+                }
+                Text {
+                    height: 18px;
+                    text: root.message;
+                    color: WorkbenchStyle.muted;
+                    font-size: ImGuiFontStyle.body;
+                    wrap: word-wrap;
+                }
+                // 文件名、大小、目标文件夹：三行都是 C++ 拼好的 UTF-8。
+                HorizontalLayout {
+                    height: 20px;
+                    spacing: 8px;
+                    Text {
+                        width: 72px;
+                        text: root.file-size;
+                        color: WorkbenchStyle.muted;
+                        font-size: ImGuiFontStyle.body;
+                        vertical-alignment: center;
+                    }
+                    Text {
+                        horizontal-stretch: 1;
+                        text: root.folder;
+                        color: WorkbenchStyle.text;
+                        font-size: ImGuiFontStyle.body;
+                        vertical-alignment: center;
+                        overflow: elide;
+                    }
+                }
+                Rectangle { vertical-stretch: 1; }
+                HorizontalLayout {
+                    height: 30px;
+                    alignment: end;
+                    spacing: 8px;
+                    skip-button := WorkbenchButton {
+                        width: 108px; height: 30px;
+                        text-size: ImGuiFontStyle.base;
+                        primary: true;
+                        text: root.skip-text;
+                        clicked => { root.chosen(0); }
+                    }
+                    WorkbenchButton {
+                        width: 108px; height: 30px;
+                        text-size: ImGuiFontStyle.base;
+                        soft: true;
+                        text: root.overwrite-text;
+                        clicked => { root.chosen(1); }
+                    }
+                    WorkbenchButton {
+                        width: 108px; height: 30px;
+                        text-size: ImGuiFontStyle.base;
+                        soft: true;
+                        text: root.rename-text;
+                        clicked => { root.chosen(2); }
+                    }
+                    WorkbenchButton {
+                        width: 108px; height: 30px;
+                        text-size: ImGuiFontStyle.base;
+                        soft: true;
+                        primary: root.apply-all;
+                        text: root.apply-all-text;
+                        accessible-label: root.apply-all-text;
+                        clicked => { root.apply-all = !root.apply-all; }
+                    }
+                }
+            }
+        }
+    }
+}

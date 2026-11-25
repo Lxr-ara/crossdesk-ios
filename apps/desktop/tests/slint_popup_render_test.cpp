@@ -69,6 +69,12 @@ bool VerifyStreamPopups(RenderTestPlatform& platform) {
     stream->set_adaptation_policy_index(policy);
     ++video_changes;
   });
+  // The first menu row is the UU picture tier; one tap applies it with no OK.
+  int preset_changes = 0;
+  stream->on_change_quality_preset([&](int preset) {
+    stream->set_quality_preset_index(preset);
+    ++preset_changes;
+  });
   stream->on_select_file([&] { file_visible = true; });
   bool close_synchronously = false;
   stream->on_close_file_transfer([&] {
@@ -97,8 +103,9 @@ bool VerifyStreamPopups(RenderTestPlatform& platform) {
                "Video settings menu must fully open without pointer movement")) return false;
     screen.Click(video_x + 41, top + 80, 4);
     screen.Click(900, top + 300);
-    if (!Check(!stream->get_video_menu_open() && video_changes == repeat + 1,
-               "Video selection and outside dismissal must respond immediately")) return false;
+    if (!Check(!stream->get_video_menu_open() &&
+                   preset_changes == repeat + 1 && video_changes == 0,
+               "Picture tier selection and outside dismissal must respond immediately")) return false;
   }
   if (!Check(remote_presses == 0 && remote_releases == 0 && remote_scrolls == 0,
              "Menu gestures must not be forwarded to the peer")) return false;
