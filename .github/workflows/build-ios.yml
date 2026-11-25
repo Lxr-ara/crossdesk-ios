@@ -156,7 +156,17 @@ jobs:
           echo "version=${VERSION_NUM}" >> "${GITHUB_OUTPUT}"
 
       - name: Initialize submodules
-        run: git submodule update --init --recursive
+        run: |
+          git submodule update --init --recursive || true
+          # This repo carries the merged tree without a gitlink for MiniRTC (the
+          # Contents/Git-Data publishing path cannot create one), so pin it here.
+          if [[ ! -f deps/submodules/minirtc/xmake.lua ]]; then
+            git clone --filter=blob:none https://github.com/kunkundi/minirtc deps/submodules/minirtc
+          fi
+          git -C deps/submodules/minirtc fetch --depth 1 origin \
+            5d4f24c42831234035be3c79cd31467753e06609
+          git -C deps/submodules/minirtc checkout -q \
+            5d4f24c42831234035be3c79cd31467753e06609
 
       - name: Set up Python
         id: python
