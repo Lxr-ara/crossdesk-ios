@@ -65,7 +65,6 @@ target_end()
 if is_plat("iphoneos") then
     includes(path.join(source_dir, "deps/submodules/minirtc/thirdparty/openssl"))
     add_requires("openssl3 3.3.2", {system = false, configs = {shared = false}})
-    target("crossdesk_mobile_trust")
     -- MiniRTC patches the TLS socket layout. Both static archives must use its recipe.
     includes(path.join(source_dir, "deps/submodules/minirtc/thirdparty/websocketpp"))
     includes(path.join(source_dir, "libs/controller/mobile_direct.lua"))
