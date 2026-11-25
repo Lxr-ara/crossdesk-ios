@@ -673,7 +673,9 @@ struct RemoteSessionView: View {
                 if y - halfHeight < 8 { y = keyboardRect.maxY + 6 + halfHeight }
             }
         }
-        return CGPoint(x: x, y: min(max(y, halfHeight + 8), maxY))
+        return CGPoint(x: x,
+                        y: min(max(y, halfHeight + 8),
+                               max(halfHeight + 8, size.height - halfHeight - 8)))
     }
 
     private var dockedKeyboard: some View {
